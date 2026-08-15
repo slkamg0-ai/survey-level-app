@@ -1119,6 +1119,11 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
       <section className="card">
         <h2>
           야장
+          {data.targetHeightMode?.startsWith('MH_') && (
+            <span style={{ fontSize: '11px', color: 'var(--primary)', fontWeight: 600, marginLeft: '6px' }}>
+              📍 맨홀 검측 모드 (미터별 터파기고 없이 시점/종점 맨홀만 표시)
+            </span>
+          )}
           <button
             type="button"
             className="mini"
@@ -1155,12 +1160,19 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
               </tr>
             </thead>
             <tbody>
-              {computed.rows.map((r, i) => {
+              {(
+                data.targetHeightMode?.startsWith('MH_')
+                  ? computed.rows.filter((_, idx) => idx === 0 || idx === computed.rows.length - 1)
+                  : computed.rows
+              ).map((r, i) => {
                 const key = String(r.x);
                 const rawMeas = data.meas[key] || '';
                 const measVal = parseFloat(rawMeas);
                 const isDetailOpen = !!openDetail[key];
-                const label = r.node === 'start' ? '시점' : (r.node === 'end' ? '종점' : `+${trimNum(r.x)}`);
+                const isMhMode = !!data.targetHeightMode?.startsWith('MH_');
+                const label = isMhMode
+                  ? (r.node === 'start' ? (data.startMhName || '시점 MH') : (data.endMhName || '종점 MH'))
+                  : (r.node === 'start' ? '시점' : (r.node === 'end' ? '종점' : `+${trimNum(r.x)}`));
 
                 // 판정 계산
                 let judgeClass = 'judge none';
