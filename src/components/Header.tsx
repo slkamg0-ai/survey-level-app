@@ -1,5 +1,6 @@
 import React from 'react';
 import { Sun, Moon, HardHat } from 'lucide-react';
+import { APP_VERSION } from '../version';
 
 interface HeaderProps {
   secName: string;
@@ -19,7 +20,10 @@ export const Header: React.FC<HeaderProps> = ({ secName, ihVal, ihSub, theme, on
           <div className="brand">
             <b>
               <HardHat size={18} className="text-blue-500" />
-              측량 레벨 야장
+              측량 야장
+              <span style={{ fontSize: '10px', opacity: 0.8, fontWeight: 600, marginLeft: '4px', background: 'var(--primary-bg)', color: 'var(--primary)', padding: '1px 5px', borderRadius: '4px' }}>
+                {APP_VERSION}
+              </span>
             </b>
             <span>{secName || '구간 미지정'}</span>
           </div>
