@@ -1,0 +1,9 @@
+{
+  "appId": "com.fieldsurvey.levelapp",
+  "appName": "측량레벨야장",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  }
+}
