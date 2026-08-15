@@ -29,11 +29,16 @@ export interface ManholePhotoGPS {
 }
 
 export type TargetHeightMode =
-  | 'CUT_BOTTOM'    // 터파기 바닥고 (관저고 − 기초총두께)
-  | 'BEDDING_TOP'   // 잡석/골재/모래 채움고 (관저고 − 관두께 − 콘크리트기초)
-  | 'CONCRETE_TOP'  // 기초 콘크리트 타설고 (관저고 − 관두께)
-  | 'INVERT'        // 관저고 (Invert EL)
-  | 'CROWN'         // 관상단고 (Pipe Crown EL)
+  | 'CUT_BOTTOM'    // 1. 관로 터파기 바닥고
+  | 'AGGREGATE_TOP' // 2. 관로 골재 포설고
+  | 'CONCRETE_TOP'  // 3. 관로 레미콘 타설고
+  | 'SAND_TOP'      // 4. 관로 모래 포설고
+  | 'INVERT'        // 5. 관저고 (Invert EL)
+  | 'CROWN'         // 6. 관상단고 (Pipe Crown EL)
+  | 'MH_CUT'        // 맨홀 1. 터파기 바닥고
+  | 'MH_AGGREGATE'  // 맨홀 2. 골재 포설고
+  | 'MH_CONCRETE'   // 맨홀 3. 레미콘 타설고
+  | 'MH_INVERT'     // 맨홀 4. 내부 바닥고
   | 'CUSTOM';       // 검측용/사용자지정고 (Custom Offset)
 
 export interface TrenchSurveyData {
@@ -50,6 +55,7 @@ export interface TrenchSurveyData {
   thick: string;     // 관두께 (m)
   sand: string;      // 모래기초 (m)
   conc: string;      // 콘크리트기초 (m)
+  aggregate: string; // 골재기초/쇄석 (m)
   tol: string;       // 허용오차 (mm)
   step: number;      // 측점간격 (m)
   surveyor: string;

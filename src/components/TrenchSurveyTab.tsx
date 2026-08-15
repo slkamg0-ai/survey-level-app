@@ -26,6 +26,7 @@ const DEFAULT_DATA: TrenchSurveyData = {
   thick: '0.019',
   sand: '0.100',
   conc: '0.100',
+  aggregate: '0.150',
   tol: '30',
   step: 5,
   surveyor: '홍길동',
@@ -63,7 +64,7 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
     }
   }, [data]);
 
-  // Helper number parser
+  // 수치 파싱
   const num = (v: string): number | null => {
     const parsed = parseFloat(v.replace(/[^0-9.+-]/g, ''));
     return isFinite(parsed) ? parsed : null;
@@ -224,8 +225,9 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
     const t = num(data.thick) || 0;
     const sand = num(data.sand) || 0;
     const conc = num(data.conc) || 0;
+    const agg = num(data.aggregate) || 0;
     const dia = num(data.dia);
-    const base = t + sand + conc;
+    const base = t + sand + conc + agg; // 기초 총두께 (관두께+모래+콘크리트+골재)
     const step = data.step > 0 ? data.step : 5;
     const tol = (num(data.tol) === null ? 30 : num(data.tol)!) / 1000;
 
@@ -263,21 +265,40 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
 
     out.rows = xs.map((d, i) => {
       const invEl = si - out.slopePerM * d;
-      const cutBottomEl = invEl - base;
       const topEl = dia !== null ? invEl + dia + t : null;
+      const cutBottomEl = invEl - base; // 1. 관로 터파기 바닥고
 
-      // 하이브리드 검측 목표 높이 계산
+      // 하이브리드 검측 목표 높이 계산 (현장 Layer 기준)
       let targetEl = cutBottomEl;
       const mode = data.targetHeightMode || 'CUT_BOTTOM';
 
-      if (mode === 'BEDDING_TOP') {
-        targetEl = invEl - t - conc;
+      if (mode === 'AGGREGATE_TOP') {
+        // 2. 관로 골재 포설고 (관저고 - 관두께 - 모래 - 콘크리트)
+        targetEl = invEl - (t + sand + conc);
       } else if (mode === 'CONCRETE_TOP') {
+        // 3. 관로 레미콘 타설고 (관저고 - 관두께 - 모래)
+        targetEl = invEl - (t + sand);
+      } else if (mode === 'SAND_TOP') {
+        // 4. 관로 모래 포설고 (관저고 - 관두께)
         targetEl = invEl - t;
       } else if (mode === 'INVERT') {
+        // 5. 관저고
         targetEl = invEl;
       } else if (mode === 'CROWN') {
+        // 6. 관상단고 (관저고 + 관경 + 관두께)
         targetEl = topEl !== null ? topEl : invEl + (dia || 0) + t;
+      } else if (mode === 'MH_CUT') {
+        // 맨홀 1. 터파기 바닥고 (Inv - 콘크리트 - 골재)
+        targetEl = invEl - (conc + agg);
+      } else if (mode === 'MH_AGGREGATE') {
+        // 맨홀 2. 골재 포설고 (Inv - 콘크리트)
+        targetEl = invEl - conc;
+      } else if (mode === 'MH_CONCRETE') {
+        // 맨홀 3. 레미콘 타설고 (Inv)
+        targetEl = invEl;
+      } else if (mode === 'MH_INVERT') {
+        // 맨홀 4. 내부 바닥고 (Inv)
+        targetEl = invEl;
       } else if (mode === 'CUSTOM') {
         const offset = parseFloat(data.customOffsetM || '0') || 0;
         targetEl = invEl + offset;
@@ -394,11 +415,13 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
       thick: '0.019',
       sand: '0.100',
       conc: '0.100',
+      aggregate: '0.150',
       tol: '30',
       step: 5,
       surveyor: '홍길동',
       mdate: new Date().toISOString().split('T')[0],
-      meas: {}
+      meas: {},
+      targetHeightMode: 'CUT_BOTTOM'
     });
     onToast('샘플 데이터를 적용했습니다');
   };
@@ -424,11 +447,13 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
       thick: '0.019',
       sand: '0.100',
       conc: '0.100',
+      aggregate: '0.150',
       tol: '30',
       step: 5,
       surveyor: '',
       mdate: new Date().toISOString().split('T')[0],
-      meas: {}
+      meas: {},
+      targetHeightMode: 'CUT_BOTTOM'
     });
     onToast('초기화되었습니다');
   };
@@ -803,6 +828,19 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
               </div>
             </div>
 
+            <div className="f">
+              <label>골재/잡석두께 <i>m</i></label>
+              <div className="ctrl">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="0.150 (없으면 0)"
+                  value={data.aggregate || ''}
+                  onChange={e => setData({ ...data, aggregate: e.target.value })}
+                />
+              </div>
+            </div>
+
             <div className="f wide">
               <label>측점 간격 <i>m</i></label>
               <div className="chips">
@@ -878,7 +916,7 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
         <div className="stat">
           <b>기초 총두께</b>
           <span>{fmt(computed.base)}</span>
-          <em>{fmt(num(data.thick) || 0)}+{fmt(num(data.sand) || 0)}+{fmt(num(data.conc) || 0)}</em>
+          <em>{fmt(num(data.thick) || 0)}+{fmt(num(data.sand) || 0)}+{fmt(num(data.conc) || 0)}+{fmt(num(data.aggregate) || 0)}</em>
         </div>
 
         <div className="stat">
@@ -904,34 +942,62 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
         </div>
       </section>
 
-      {/* 하이브리드 검측 높이 선택 바 (터파기, 골재, 기초타설, 관저고, 관상단고, 지정고) */}
+      {/* 하이브리드 검측 높이 선택 바 (관로 토공 Layer & 맨홀 Layer) */}
       <section className="card" style={{ padding: '8px 10px' }}>
         <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--ink-2)', marginBottom: '6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span>🎯 검측 목표 높이 선택 (하이브리드)</span>
+          <span>🎯 검측 목표 높이 선택 (현장 Layer)</span>
           <span style={{ fontSize: '10.5px', color: 'var(--primary)', fontWeight: 600 }}>
-            {(!data.targetHeightMode || data.targetHeightMode === 'CUT_BOTTOM') && '터파기 바닥고 기준'}
-            {data.targetHeightMode === 'BEDDING_TOP' && '골재/모래 채움고 기준'}
-            {data.targetHeightMode === 'CONCRETE_TOP' && '기초 콘크리트 타설고 기준'}
-            {data.targetHeightMode === 'INVERT' && '관저고 (Inv EL) 기준'}
-            {data.targetHeightMode === 'CROWN' && '관상단고 (Top EL) 기준'}
+            {(!data.targetHeightMode || data.targetHeightMode === 'CUT_BOTTOM') && '1. 관로 터파기 바닥고 기준'}
+            {data.targetHeightMode === 'AGGREGATE_TOP' && '2. 관로 골재 포설고 기준'}
+            {data.targetHeightMode === 'CONCRETE_TOP' && '3. 관로 레미콘 타설고 기준'}
+            {data.targetHeightMode === 'SAND_TOP' && '4. 관로 모래 포설고 기준'}
+            {data.targetHeightMode === 'INVERT' && '5. 관저고 (Inv EL) 기준'}
+            {data.targetHeightMode === 'CROWN' && '6. 관상단고 (Top EL) 기준'}
+            {data.targetHeightMode === 'MH_CUT' && '맨홀 1. 터파기 바닥고 기준'}
+            {data.targetHeightMode === 'MH_AGGREGATE' && '맨홀 2. 골재 포설고 기준'}
+            {data.targetHeightMode === 'MH_CONCRETE' && '맨홀 3. 레미콘 타설고 기준'}
+            {data.targetHeightMode === 'MH_INVERT' && '맨홀 4. 내부 바닥고 기준'}
             {data.targetHeightMode === 'CUSTOM' && `사용자 지정 (+${data.customOffsetM || '0'}m) 기준`}
           </span>
         </div>
-        <div className="chips" style={{ gap: '3px' }}>
+
+        {/* 관로 토공 Layer 세트 */}
+        <div style={{ fontSize: '10px', color: 'var(--ink-3)', fontWeight: 600, marginBottom: '3px' }}>관로 토공 Layer:</div>
+        <div className="chips" style={{ gap: '3px', marginBottom: '6px' }}>
           <button type="button" aria-pressed={!data.targetHeightMode || data.targetHeightMode === 'CUT_BOTTOM'} onClick={() => setData(prev => ({ ...prev, targetHeightMode: 'CUT_BOTTOM' }))}>
-            터파기바닥
+            1.터파기바닥
           </button>
-          <button type="button" aria-pressed={data.targetHeightMode === 'BEDDING_TOP'} onClick={() => setData(prev => ({ ...prev, targetHeightMode: 'BEDDING_TOP' }))}>
-            골재채움
+          <button type="button" aria-pressed={data.targetHeightMode === 'AGGREGATE_TOP'} onClick={() => setData(prev => ({ ...prev, targetHeightMode: 'AGGREGATE_TOP' }))}>
+            2.골재포설
           </button>
           <button type="button" aria-pressed={data.targetHeightMode === 'CONCRETE_TOP'} onClick={() => setData(prev => ({ ...prev, targetHeightMode: 'CONCRETE_TOP' }))}>
-            기초타설
+            3.레미콘타설
+          </button>
+          <button type="button" aria-pressed={data.targetHeightMode === 'SAND_TOP'} onClick={() => setData(prev => ({ ...prev, targetHeightMode: 'SAND_TOP' }))}>
+            4.모래포설
           </button>
           <button type="button" aria-pressed={data.targetHeightMode === 'INVERT'} onClick={() => setData(prev => ({ ...prev, targetHeightMode: 'INVERT' }))}>
-            관저고
+            5.관저고
           </button>
           <button type="button" aria-pressed={data.targetHeightMode === 'CROWN'} onClick={() => setData(prev => ({ ...prev, targetHeightMode: 'CROWN' }))}>
-            관상단고
+            6.관상단고
+          </button>
+        </div>
+
+        {/* 맨홀 Layer 세트 */}
+        <div style={{ fontSize: '10px', color: 'var(--ink-3)', fontWeight: 600, marginBottom: '3px' }}>맨홀 (MH) Layer:</div>
+        <div className="chips" style={{ gap: '3px' }}>
+          <button type="button" aria-pressed={data.targetHeightMode === 'MH_CUT'} onClick={() => setData(prev => ({ ...prev, targetHeightMode: 'MH_CUT' }))}>
+            MH 1.터파기
+          </button>
+          <button type="button" aria-pressed={data.targetHeightMode === 'MH_AGGREGATE'} onClick={() => setData(prev => ({ ...prev, targetHeightMode: 'MH_AGGREGATE' }))}>
+            MH 2.골재포설
+          </button>
+          <button type="button" aria-pressed={data.targetHeightMode === 'MH_CONCRETE'} onClick={() => setData(prev => ({ ...prev, targetHeightMode: 'MH_CONCRETE' }))}>
+            MH 3.레미콘타설
+          </button>
+          <button type="button" aria-pressed={data.targetHeightMode === 'MH_INVERT'} onClick={() => setData(prev => ({ ...prev, targetHeightMode: 'MH_INVERT' }))}>
+            MH 4.내부바닥
           </button>
           <button type="button" aria-pressed={data.targetHeightMode === 'CUSTOM'} onClick={() => setData(prev => ({ ...prev, targetHeightMode: 'CUSTOM' }))}>
             지정고
@@ -976,10 +1042,15 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
                 <th className="c">측점</th>
                 <th className="n">
                   {(!data.targetHeightMode || data.targetHeightMode === 'CUT_BOTTOM') && '터파기고'}
-                  {data.targetHeightMode === 'BEDDING_TOP' && '골재채움고'}
-                  {data.targetHeightMode === 'CONCRETE_TOP' && '기초타설고'}
+                  {data.targetHeightMode === 'AGGREGATE_TOP' && '골재포설고'}
+                  {data.targetHeightMode === 'CONCRETE_TOP' && '레미콘타설고'}
+                  {data.targetHeightMode === 'SAND_TOP' && '모래포설고'}
                   {data.targetHeightMode === 'INVERT' && '관저고'}
                   {data.targetHeightMode === 'CROWN' && '관상단고'}
+                  {data.targetHeightMode === 'MH_CUT' && 'MH 터파기고'}
+                  {data.targetHeightMode === 'MH_AGGREGATE' && 'MH 골재고'}
+                  {data.targetHeightMode === 'MH_CONCRETE' && 'MH 레미콘고'}
+                  {data.targetHeightMode === 'MH_INVERT' && 'MH 바닥고'}
                   {data.targetHeightMode === 'CUSTOM' && '검측지정고'}
                 </th>
                 <th className="n">목표읽음</th>
