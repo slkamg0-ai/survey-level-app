@@ -112,6 +112,50 @@ export const ManholeDbModal: React.FC<Props> = ({
     onToast(`🎉 ${newItems.length}개 CAD 맨홀 관저고 일괄 등록 완료!`);
   };
 
+  // CSV/TXT 파일 읽기 핸들러
+  const handleFileUpload = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = e.target?.result as string;
+      if (!content) return;
+
+      const lines = content.split(/\r?\n/);
+      const newItems: ManholeMasterItem[] = [];
+
+      lines.forEach((line, idx) => {
+        if (!line.trim() || line.includes('맨홀') || line.includes('관저고') || line.includes('Invert')) return;
+
+        const parts = line.split(/[,	\s]+/).filter(Boolean);
+        if (parts.length >= 2) {
+          const name = parts[0].trim().toUpperCase();
+          const el = parts[1].trim();
+          const rem = parts.slice(2).join(' ').trim();
+          if (name && isFinite(parseFloat(el))) {
+            newItems.push({
+              id: `${Date.now()}_${idx}`,
+              name,
+              invertEl: el,
+              remarks: rem
+            });
+          }
+        }
+      });
+
+      if (newItems.length === 0) {
+        onToast('파일에서 유효한 맨홀 관저고 데이터를 찾지 못했습니다 (형식: MH01, -0.430)');
+        return;
+      }
+
+      const existingNames = new Set(newItems.map(i => i.name));
+      const merged = [...newItems, ...items.filter(i => !existingNames.has(i.name))];
+
+      setItems(merged);
+      saveManholeList(merged);
+      onToast(`📁 '${file.name}' 파일에서 ${newItems.length}개 맨홀 DB 등록 완료!`);
+    };
+    reader.readAsText(file, 'UTF-8');
+  };
+
   const handleDeleteItem = (id: string, name: string) => {
     const updated = items.filter(i => i.id !== id);
     setItems(updated);
@@ -188,16 +232,31 @@ export const ManholeDbModal: React.FC<Props> = ({
         <div style={{ padding: '14px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {/* 새 맨홀 등록폼 */}
           <div style={{ background: 'var(--surface-2)', padding: '12px', borderRadius: '10px', border: '1px solid var(--line)' }}>
-            <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--ink-2)', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--ink-2)', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
               <span>➕ 맨홀 관저고 신규 등록</span>
-              <button
-                type="button"
-                className="mini"
-                onClick={() => setShowBatchInput(!showBatchInput)}
-                style={{ fontSize: '10.5px' }}
-              >
-                {showBatchInput ? '개별 입력' : '📋 CAD 다중 텍스트 붙여넣기'}
-              </button>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <label className="btn mini" style={{ fontSize: '10.5px', padding: '2px 8px', cursor: 'pointer', margin: 0, display: 'flex', alignItems: 'center', gap: '3px' }}>
+                  <FileText size={12} /> 📁 CSV/TXT 파일 업로드
+                  <input
+                    type="file"
+                    accept=".csv,.txt,.tsv"
+                    style={{ display: 'none' }}
+                    onChange={e => {
+                      const file = e.target.files?.[0];
+                      if (file) handleFileUpload(file);
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="mini"
+                  onClick={() => setShowBatchInput(!showBatchInput)}
+                  style={{ fontSize: '10.5px' }}
+                >
+                  {showBatchInput ? '개별 입력' : '📋 텍스트 붙여넣기'}
+                </button>
+              </div>
             </div>
 
             {showBatchInput ? (

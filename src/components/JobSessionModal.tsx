@@ -90,6 +90,29 @@ export const JobSessionModal: React.FC<Props> = ({
     onToast(`삭제되었습니다: ${name}`);
   };
 
+  const handleImportSessionFile = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const content = e.target?.result as string;
+        if (!content) return;
+        const parsed = JSON.parse(content) as SavedJobSession;
+        if (!parsed.id || !parsed.name || !parsed.tab) {
+          onToast('올바른 작업 세션 파일 형식이 아닙니다');
+          return;
+        }
+        const updated = [parsed, ...sessions.filter(s => s.id !== parsed.id)];
+        setSessions(updated);
+        saveSessionList(updated);
+        onToast(`📁 '${parsed.name}' 작업 세션을 불러왔습니다!`);
+      } catch (err) {
+        console.error(err);
+        onToast('파일을 읽는 중 오류가 발생했습니다');
+      }
+    };
+    reader.readAsText(file, 'UTF-8');
+  };
+
   return (
     <div
       style={{
@@ -154,8 +177,21 @@ export const JobSessionModal: React.FC<Props> = ({
         <div style={{ padding: '14px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px' }}>
           {/* 현재 작업 저장 섹션 */}
           <div style={{ background: 'var(--surface-2)', padding: '12px', borderRadius: '10px', border: '1px solid var(--line)' }}>
-            <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--ink-2)', marginBottom: '8px' }}>
-              ➕ 현재 작업 새로 저장하기
+            <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--ink-2)', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>➕ 현재 작업 새로 저장하기</span>
+              <label className="btn mini" style={{ fontSize: '10.5px', padding: '2px 8px', cursor: 'pointer', margin: 0, display: 'flex', alignItems: 'center', gap: '3px' }}>
+                📁 작업파일 불러오기
+                <input
+                  type="file"
+                  accept=".json"
+                  style={{ display: 'none' }}
+                  onChange={e => {
+                    const file = e.target.files?.[0];
+                    if (file) handleImportSessionFile(file);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
             </div>
             <div style={{ display: 'flex', gap: '8px' }}>
               <input
