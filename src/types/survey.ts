@@ -41,6 +41,13 @@ export type TargetHeightMode =
   | 'MH_INVERT'     // 맨홀 4. 내부 바닥고
   | 'CUSTOM';       // 검측용/사용자지정고 (Custom Offset)
 
+export interface ManholeMasterItem {
+  id: string;
+  name: string;      // 맨홀 명칭 (예: MH01, MH02)
+  invertEl: string;  // CAD 설계 관저고 (예: -0.430, 10.250)
+  remarks?: string;  // 비고 (예: 오수1공구)
+}
+
 export interface TrenchSurveyData {
   mode: TrenchMode;
   tbmEl: string;
@@ -48,6 +55,8 @@ export interface TrenchSurveyData {
   ihDirect: string;
   pipeType: PipeType;
   secName: string;
+  startMhName?: string; // 시점 맨홀명 (예: MH01)
+  endMhName?: string;   // 종점 맨홀명 (예: MH02)
   startInv: string;
   endInv: string;
   len: string;

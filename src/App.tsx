@@ -4,6 +4,7 @@ import { Tabs } from './components/Tabs';
 import { TrenchSurveyTab } from './components/TrenchSurveyTab';
 import { StandardLevelTab } from './components/StandardLevelTab';
 import { JobSessionModal } from './components/JobSessionModal';
+import { ManholeDbModal } from './components/ManholeDbModal';
 import { TrenchSurveyData, StandardSurveyData } from './types/survey';
 import './styles/index.css';
 
@@ -15,8 +16,9 @@ export function App() {
   const [ihSub, setIhSub] = useState('TBM표고 + 후시');
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
-  // 세션 모달 상태
+  // 모달 상태
   const [isJobsModalOpen, setIsJobsModalOpen] = useState(false);
+  const [isMhDbModalOpen, setIsMhDbModalOpen] = useState(false);
 
   // 로드 콜백 트리거
   const [loadedTrenchData, setLoadedTrenchData] = useState<TrenchSurveyData | null>(null);
@@ -52,6 +54,7 @@ export function App() {
         theme={theme}
         onToggleTheme={toggleTheme}
         onOpenJobs={() => setIsJobsModalOpen(true)}
+        onOpenMhDb={() => setIsMhDbModalOpen(true)}
       />
 
       {activeTab === 'trench' ? (
@@ -91,6 +94,13 @@ export function App() {
           setActiveTab('standard');
           setLoadedStandardData(data);
         }}
+        onToast={showToast}
+      />
+
+      {/* CAD 맨홀 관저고 DB 관리자 모달 */}
+      <ManholeDbModal
+        isOpen={isMhDbModalOpen}
+        onClose={() => setIsMhDbModalOpen(false)}
         onToast={showToast}
       />
 

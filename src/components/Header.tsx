@@ -8,9 +8,10 @@ interface HeaderProps {
   theme: 'dark' | 'light';
   onToggleTheme: () => void;
   onOpenJobs?: () => void;
+  onOpenMhDb?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ secName, ihVal, ihSub, theme, onToggleTheme, onOpenJobs }) => {
+export const Header: React.FC<HeaderProps> = ({ secName, ihVal, ihSub, theme, onToggleTheme, onOpenJobs, onOpenMhDb }) => {
   return (
     <>
       <header className="topbar">
@@ -23,12 +24,34 @@ export const Header: React.FC<HeaderProps> = ({ secName, ihVal, ihSub, theme, on
             <span>{secName || '구간 미지정'}</span>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <div className="ih">
               <span className="ih-label">기계고 I.H</span>
               <span className="ih-val">{ihVal}</span>
               <span className="ih-sub">{ihSub}</span>
             </div>
+
+            {onOpenMhDb && (
+              <button
+                onClick={onOpenMhDb}
+                style={{
+                  background: 'var(--surface-2)',
+                  border: '1px solid var(--line)',
+                  borderRadius: '8px',
+                  padding: '6px 8px',
+                  color: 'var(--ink)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  fontSize: '11px',
+                  fontWeight: 600
+                }}
+                title="맨홀 CAD 관저고 DB"
+              >
+                🕳️ 맨홀DB
+              </button>
+            )}
 
             {onOpenJobs && (
               <button
@@ -37,7 +60,7 @@ export const Header: React.FC<HeaderProps> = ({ secName, ihVal, ihSub, theme, on
                   background: 'var(--surface-2)',
                   border: '1px solid var(--line)',
                   borderRadius: '8px',
-                  padding: '8px',
+                  padding: '6px 8px',
                   color: 'var(--ink)',
                   cursor: 'pointer',
                   display: 'flex',

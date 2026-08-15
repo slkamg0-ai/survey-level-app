@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { TrenchSurveyData, TrenchRow, PipeType, ManholePhotoGPS } from '../types/survey';
 import { PP_DOUBLE_SPECS, STORMWATER_SPECS, findPipeThickness } from '../data/pipeSpecs';
-import { Download, Copy, RefreshCw, RotateCcw, FileSpreadsheet, Check, AlertCircle, Camera, MapPin, Sparkles } from 'lucide-react';
+import { Download, Copy, RefreshCw, RotateCcw, FileSpreadsheet, Check, AlertCircle, Camera, MapPin, Sparkles, Database } from 'lucide-react';
+import { getSavedManholes } from './ManholeDbModal';
 
 interface Props {
   onUpdateHeader: (secName: string, ihVal: string, ihSub: string) => void;
@@ -19,6 +20,8 @@ const DEFAULT_DATA: TrenchSurveyData = {
   ihDirect: '',
   pipeType: 'PP_DOUBLE',
   secName: 'MH01 ~ MH02',
+  startMhName: 'MH01',
+  endMhName: 'MH02',
   startInv: '-0.430',
   endInv: '-0.190',
   len: '75',
@@ -661,6 +664,99 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
                 ℹ️ 우수공관 D{currentSpec.diameterMm}mm 명세: 관외경/기초폭(Bd) = <b>{currentSpec.outerDiameterMm}mm</b>
               </div>
             )}
+
+            {/* 맨홀 명칭 입력 & CAD 설계 관저고(EL) DB 자동 연동 카드 */}
+            <div className="f wide" style={{ background: 'var(--surface-3)', padding: '10px', borderRadius: '8px', marginTop: '4px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px', flexWrap: 'wrap', gap: '4px' }}>
+                <label style={{ color: 'var(--ink)', fontWeight: 700, fontSize: '11.5px', margin: 0 }}>
+                  <Database size={13} style={{ verticalAlign: 'text-bottom', marginRight: '4px' }} />
+                  맨홀 명칭 입력 & CAD 관저고(Inv EL) DB 연동
+                </label>
+                <button
+                  type="button"
+                  className="btn primary"
+                  style={{ fontSize: '10.5px', padding: '3px 8px', minWidth: 'auto' }}
+                  onClick={() => {
+                    const mhList = getSavedManholes();
+                    const sName = (data.startMhName || '').trim().toUpperCase();
+                    const eName = (data.endMhName || '').trim().toUpperCase();
+
+                    const startItem = mhList.find(m => m.name.toUpperCase() === sName);
+                    const endItem = mhList.find(m => m.name.toUpperCase() === eName);
+
+                    if (startItem || endItem) {
+                      setData(prev => ({
+                        ...prev,
+                        startInv: startItem ? startItem.invertEl : prev.startInv,
+                        endInv: endItem ? endItem.invertEl : prev.endInv,
+                        secName: `${sName || '시점'} ~ ${eName || '종점'}`
+                      }));
+                      onToast(`⚡ 맨홀 DB 관저고 자동 불러오기 완료! (${startItem ? startItem.name + ':' + startItem.invertEl : ''} ${endItem ? endItem.name + ':' + endItem.invertEl : ''})`);
+                    } else {
+                      onToast(`맨홀 DB에 '${sName || '시점'}' 또는 '${eName || '종점'}' 관저고가 없습니다. 맨홀DB 버튼에서 등록해주세요.`);
+                    }
+                  }}
+                >
+                  ⚡ CAD 관저고 자동 불러오기
+                </button>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <div className="f">
+                  <label style={{ fontSize: '11px' }}>시점 맨홀명</label>
+                  <div className="ctrl">
+                    <input
+                      type="text"
+                      placeholder="예: MH01"
+                      value={data.startMhName || ''}
+                      onChange={e => {
+                        const val = e.target.value;
+                        const sUpper = val.trim().toUpperCase();
+                        const mhList = getSavedManholes();
+                        const found = mhList.find(m => m.name.toUpperCase() === sUpper);
+
+                        setData(prev => ({
+                          ...prev,
+                          startMhName: val,
+                          startInv: found ? found.invertEl : prev.startInv,
+                          secName: `${val || '시점'} ~ ${prev.endMhName || '종점'}`
+                        }));
+                        if (found) {
+                          onToast(`✓ ${found.name} 관저고(${found.invertEl}m) 자동적용!`);
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="f">
+                  <label style={{ fontSize: '11px' }}>종점 맨홀명</label>
+                  <div className="ctrl">
+                    <input
+                      type="text"
+                      placeholder="예: MH02"
+                      value={data.endMhName || ''}
+                      onChange={e => {
+                        const val = e.target.value;
+                        const eUpper = val.trim().toUpperCase();
+                        const mhList = getSavedManholes();
+                        const found = mhList.find(m => m.name.toUpperCase() === eUpper);
+
+                        setData(prev => ({
+                          ...prev,
+                          endMhName: val,
+                          endInv: found ? found.invertEl : prev.endInv,
+                          secName: `${prev.startMhName || '시점'} ~ ${val || '종점'}`
+                        }));
+                        if (found) {
+                          onToast(`✓ ${found.name} 관저고(${found.invertEl}m) 자동적용!`);
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
 
             <div className="f wide">
               <label>시점 관저고 <i>m</i></label>
