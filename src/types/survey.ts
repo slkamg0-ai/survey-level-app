@@ -65,6 +65,7 @@ export interface TrenchSurveyData {
   sand: string;      // 모래기초 (m)
   conc: string;      // 콘크리트기초 (m)
   aggregate: string; // 골재기초/쇄석 (m)
+  mhBase?: string;   // 맨홀 바닥 슬래브 두께 (m, 기본 0.200m = 20cm)
   tol: string;       // 허용오차 (mm)
   step: number;      // 측점간격 (m)
   surveyor: string;

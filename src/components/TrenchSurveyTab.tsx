@@ -30,6 +30,7 @@ const DEFAULT_DATA: TrenchSurveyData = {
   sand: '0.100',
   conc: '0.100',
   aggregate: '0.150',
+  mhBase: '0.200',
   tol: '30',
   step: 5,
   surveyor: '홍길동',
@@ -249,6 +250,7 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
     const sand = num(data.sand) || 0;
     const conc = num(data.conc) || 0;
     const agg = num(data.aggregate) || 0;
+    const mhBase = num(data.mhBase) ?? 0.200; // 맨홀 바닥 슬래브 두께 (기본 20cm = 0.200m)
     const dia = num(data.dia);
     const base = t + sand + conc + agg; // 기초 총두께 (관두께+모래+콘크리트+골재)
     const step = data.step > 0 ? data.step : 5;
@@ -311,16 +313,16 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
         // 6. 관상단고 (관저고 + 관경 + 관두께)
         targetEl = topEl !== null ? topEl : invEl + (dia || 0) + t;
       } else if (mode === 'MH_CUT') {
-        // 맨홀 1. 터파기 바닥고 (Inv - 콘크리트 - 골재)
-        targetEl = invEl - (conc + agg);
+        // 맨홀 1. 터파기 바닥고 (Inv - 맨홀바닥두께 0.2m - 콘크리트 - 골재)
+        targetEl = invEl - (mhBase + conc + agg);
       } else if (mode === 'MH_AGGREGATE') {
-        // 맨홀 2. 골재 포설고 (Inv - 콘크리트)
-        targetEl = invEl - conc;
+        // 맨홀 2. 골재 포설고 (Inv - 맨홀바닥두께 0.2m - 콘크리트)
+        targetEl = invEl - (mhBase + conc);
       } else if (mode === 'MH_CONCRETE') {
-        // 맨홀 3. 레미콘 타설고 (Inv)
-        targetEl = invEl;
+        // 맨홀 3. 레미콘 타설고 (Inv - 맨홀바닥두께 0.2m)
+        targetEl = invEl - mhBase;
       } else if (mode === 'MH_INVERT') {
-        // 맨홀 4. 내부 바닥고 (Inv)
+        // 맨홀 4. 내부 바닥고 / 인버트고 (Inv)
         targetEl = invEl;
       } else if (mode === 'CUSTOM') {
         const offset = parseFloat(data.customOffsetM || '0') || 0;
@@ -1097,6 +1099,20 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
                 />
               </div>
             </div>
+
+            <div className="f">
+              <label>맨홀 바닥두께 <i>m</i></label>
+              <div className="ctrl">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="0.200 (20cm)"
+                  value={data.mhBase !== undefined ? data.mhBase : '0.200'}
+                  onChange={e => setData({ ...data, mhBase: e.target.value })}
+                />
+              </div>
+            </div>
+
 
             <div className="f wide">
               <label>측점 간격 <i>m</i></label>
