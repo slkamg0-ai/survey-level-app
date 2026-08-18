@@ -250,7 +250,8 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
     const sand = num(data.sand) || 0;
     const conc = num(data.conc) || 0;
     const agg = num(data.aggregate) || 0;
-    const mhBase = num(data.mhBase) ?? 0.200; // 맨홀 바닥 슬래브 두께 (기본 20cm = 0.200m)
+    const mhBaseVal = parseFloat((data.mhBase || '').replace(/[^0-9.+-]/g, ''));
+    const mhBase = isFinite(mhBaseVal) && mhBaseVal > 0 ? mhBaseVal : 0.200; // 맨홀 바닥 슬래브 두께 (기본 0.200m = 20cm)
     const dia = num(data.dia);
     const base = t + sand + conc + agg; // 기초 총두께 (관두께+모래+콘크리트+골재)
     const step = data.step > 0 ? data.step : 5;
@@ -267,10 +268,17 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
       slopePerM: number;
       startCut: number;
       drop: number;
+      mhBase: number;
+      conc: number;
+      agg: number;
+      sand: number;
+      t: number;
       rows: TrenchRow[];
     } = {
       ih, base, tol, dia, si, ei, L,
-      slopePerM: 0, startCut: 0, drop: 0, rows: []
+      slopePerM: 0, startCut: 0, drop: 0,
+      mhBase, conc, agg, sand, t,
+      rows: []
     };
 
     if (si === null || ei === null || L === null || L <= 0) return out;
@@ -1187,9 +1195,17 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
         </div>
 
         <div className="stat">
-          <b>기초 총두께</b>
-          <span>{fmt(computed.base)}</span>
-          <em>{fmt(num(data.thick) || 0)}+{fmt(num(data.sand) || 0)}+{fmt(num(data.conc) || 0)}+{fmt(num(data.aggregate) || 0)}</em>
+          <b>{data.targetHeightMode?.startsWith('MH_') ? '맨홀 기초두께' : '관로 기초두께'}</b>
+          <span>
+            {data.targetHeightMode?.startsWith('MH_')
+              ? fmt(computed.mhBase + computed.conc + computed.agg)
+              : fmt(computed.base)} m
+          </span>
+          <em>
+            {data.targetHeightMode?.startsWith('MH_')
+              ? `맨홀바닥(${fmt(computed.mhBase)})+레미콘(${fmt(computed.conc)})+골재(${fmt(computed.agg)})`
+              : `관두께(${fmt(computed.t)})+모래(${fmt(computed.sand)})+레미콘(${fmt(computed.conc)})+골재(${fmt(computed.agg)})`}
+          </em>
         </div>
 
         <div className="stat">
@@ -1409,10 +1425,37 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
                             <dd>{fmt(r.invEl)} m</dd>
                             <dt>관상단고</dt>
                             <dd>{r.topEl === null ? '관경 입력 필요' : `${fmt(r.topEl)} m`}</dd>
-                            <dt>터파기고</dt>
-                            <dd>{fmt(r.cutEl)} m = 관저고 − {fmt(computed.base)}</dd>
+                            <dt>
+                              {(!data.targetHeightMode || data.targetHeightMode === 'CUT_BOTTOM') && '관로 터파기고'}
+                              {data.targetHeightMode === 'AGGREGATE_TOP' && '골재 포설고'}
+                              {data.targetHeightMode === 'CONCRETE_TOP' && '레미콘 타설고'}
+                              {data.targetHeightMode === 'SAND_TOP' && '모래 포설고'}
+                              {data.targetHeightMode === 'INVERT' && '관저고'}
+                              {data.targetHeightMode === 'CROWN' && '관상단고'}
+                              {data.targetHeightMode === 'MH_CUT' && 'MH 터파기고'}
+                              {data.targetHeightMode === 'MH_AGGREGATE' && 'MH 골재포설고'}
+                              {data.targetHeightMode === 'MH_CONCRETE' && 'MH 레미콘타설고'}
+                              {data.targetHeightMode === 'MH_INVERT' && 'MH 바닥고'}
+                              {data.targetHeightMode === 'CUSTOM' && '검측 지정고'}
+                            </dt>
+                            <dd>
+                              <b>{fmt(r.cutEl)} m</b>
+                              <span style={{ fontSize: '11px', color: 'var(--ink-2)', marginLeft: '6px' }}>
+                                {(!data.targetHeightMode || data.targetHeightMode === 'CUT_BOTTOM') && `= 관저고(${fmt(r.invEl)}) − 관두께(${fmt(computed.t)}) − 모래(${fmt(computed.sand)}) − 콘크리트(${fmt(computed.conc)}) − 골재(${fmt(computed.agg)})`}
+                                {data.targetHeightMode === 'AGGREGATE_TOP' && `= 관저고(${fmt(r.invEl)}) − 관두께(${fmt(computed.t)}) − 모래(${fmt(computed.sand)}) − 콘크리트(${fmt(computed.conc)})`}
+                                {data.targetHeightMode === 'CONCRETE_TOP' && `= 관저고(${fmt(r.invEl)}) − 관두께(${fmt(computed.t)}) − 모래(${fmt(computed.sand)})`}
+                                {data.targetHeightMode === 'SAND_TOP' && `= 관저고(${fmt(r.invEl)}) − 관두께(${fmt(computed.t)})`}
+                                {data.targetHeightMode === 'INVERT' && `= 관저고(${fmt(r.invEl)})`}
+                                {data.targetHeightMode === 'CROWN' && `= 관저고(${fmt(r.invEl)}) + 관경 + 관두께`}
+                                {data.targetHeightMode === 'MH_CUT' && `= 관저고(${fmt(r.invEl)}) − 맨홀바닥(${fmt(computed.mhBase)}) − 콘크리트(${fmt(computed.conc)}) − 골재(${fmt(computed.agg)})`}
+                                {data.targetHeightMode === 'MH_AGGREGATE' && `= 관저고(${fmt(r.invEl)}) − 맨홀바닥(${fmt(computed.mhBase)}) − 콘크리트(${fmt(computed.conc)})`}
+                                {data.targetHeightMode === 'MH_CONCRETE' && `= 관저고(${fmt(r.invEl)}) − 맨홀바닥(${fmt(computed.mhBase)})`}
+                                {data.targetHeightMode === 'MH_INVERT' && `= 관저고(${fmt(r.invEl)})`}
+                                {data.targetHeightMode === 'CUSTOM' && `= 관저고(${fmt(r.invEl)}) + ${data.customOffsetM || '0'}`}
+                              </span>
+                            </dd>
                             <dt>목표읽음</dt>
-                            <dd>{r.target === null ? '기계고 입력 필요' : `${fmt(r.target)} m = I.H − 터파기고`}</dd>
+                            <dd>{r.target === null ? '기계고 입력 필요' : `${fmt(r.target)} m = I.H − 검측목표고`}</dd>
                           </dl>
                         </td>
                       </tr>
