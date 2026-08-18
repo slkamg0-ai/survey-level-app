@@ -354,38 +354,55 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
     onUpdateHeader(data.secName.trim() || '구간 미지정', ihStr, ihSub);
   }, [data, computed.ih]);
 
-  // CSV 생성
+  // CSV 생성 (동적 엑셀 수식 포함)
   const buildCsv = () => {
     const c = computed;
     const nm = data.secName.trim() || '구간';
     const head = [
       ['관로 터파기 측량 야장'],
       ['구간명', nm, '측량일', data.mdate, '측량자', data.surveyor],
-      ['기계고 I.H', fmt(c.ih), '시점 관저고', fmt(c.si), '종점 관저고', fmt(c.ei)],
-      ['연장', fmt(c.L, 2), '관경', fmt(c.dia), '관두께', fmt(num(data.thick) || 0), '모래기초', fmt(num(data.sand) || 0), '콘크리트기초', fmt(num(data.conc) || 0)],
+      ['기계고 I.H', c.ih !== null ? c.ih : '', '시점 관저고', c.si !== null ? c.si : '', '종점 관저고', c.ei !== null ? c.ei : '', '허용오차(mm)', (num(data.tol) === null ? 30 : num(data.tol)!)],
+      ['연장', c.L !== null ? c.L : '', '관경', c.dia !== null ? c.dia : '', '관두께', num(data.thick) || 0, '모래기초', num(data.sand) || 0, '콘크리트기초', num(data.conc) || 0],
       [],
       ['측점', '누가거리(m)', '터파기고(EL)', '관저고(EL)', '목표읽음(m)', '실측읽음(m)', '편차(cm)', '판정']
     ];
 
-    const body = c.rows.map(r => {
-      const raw = data.meas[String(r.x)];
-      const m = parseFloat(raw);
-      let dev = '';
-      let jd = '';
-      if (isFinite(m) && r.target !== null) {
-        const devM = m - r.target;
-        dev = (devM * 100).toFixed(1);
-        jd = Math.abs(devM) <= c.tol ? '적정' : (devM < 0 ? '더파기' : '되메움');
-      }
+    const body = c.rows.map((r, i) => {
+      const rNum = 7 + i; // 엑셀 행 번호 (헤더가 6행이므로 7행부터 데이터)
+      const rawMeas = data.meas[String(r.x)];
+      const measVal = rawMeas !== undefined && rawMeas.trim() !== '' ? rawMeas.trim() : '';
+
+      // 오프셋 계산 (터파기고 EL - 관저고 EL)
+      const targetOffset = r.cutEl - r.invEl;
+      const offsetStr = (targetOffset >= 0 ? '+' : '') + targetOffset.toFixed(4);
+
+      // 엑셀 동적 수식 정의
+      // D열 (관저고): 시점/종점/연장 셀 참조 경사 계산
+      const invElFormula = c.si !== null && c.ei !== null && c.L && c.L > 0
+        ? `=IF(ISBLANK($B$4), ${r.invEl.toFixed(3)}, $D$3 - (($D$3 - $F$3) / $B$4) * B${rNum})`
+        : r.invEl.toFixed(3);
+
+      // C열 (터파기고 EL): 관저고 + 오프셋
+      const cutElFormula = `=IF(ISBLANK(D${rNum}), ${r.cutEl.toFixed(3)}, D${rNum}${offsetStr})`;
+
+      // E열 (목표읽음 m): 기계고 I.H($B$3) - 터파기고(C열)
+      const targetFormula = `=IF(OR(ISBLANK($B$3), ISBLANK(C${rNum})), "", $B$3 - C${rNum})`;
+
+      // G열 (편차 cm): (실측F - 목표E) * 100
+      const devFormula = `=IF(OR(ISBLANK(F${rNum}), ISBLANK(E${rNum})), "", ROUND((F${rNum} - E${rNum}) * 100, 1))`;
+
+      // H열 (판정): ABS((F - E) * 1000) <= 허용오차H3 적정, F > E 더파기, 아니면 되메움
+      const jdFormula = `=IF(OR(ISBLANK(F${rNum}), ISBLANK(E${rNum})), "", IF(ABS((F${rNum} - E${rNum}) * 1000) <= $H$3, "적정", IF(F${rNum} > E${rNum}, "더파기", "되메움")))`;
+
       return [
         r.node === 'start' ? '시점' : (r.node === 'end' ? '종점' : `+${trimNum(r.x)}`),
-        trimNum(r.x),
-        fmt(r.cutEl),
-        fmt(r.invEl),
-        r.target === null ? '' : fmt(r.target),
-        isFinite(m) ? String(m) : '',
-        dev,
-        jd
+        r.x,
+        cutElFormula,
+        invElFormula,
+        targetFormula,
+        measVal,
+        devFormula,
+        jdFormula
       ];
     });
 
@@ -394,6 +411,7 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
       return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
     }).join(',')).join('\r\n');
   };
+
 
   const handleDownloadCsv = () => {
     const csv = '\uFEFF' + buildCsv();

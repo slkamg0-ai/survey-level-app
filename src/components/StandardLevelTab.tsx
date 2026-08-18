@@ -233,29 +233,71 @@ export const StandardLevelTab: React.FC<Props> = ({ onUpdateHeader, onToast, loa
     });
   };
 
-  // CSV 생성
+  // CSV 생성 (동적 엑셀 수식 포함)
   const buildCsv = () => {
+    const isIh = data.method === 'ih';
     const head = [
       ['표준 레벨 측량 야장'],
       ['사업/노선명', data.title, '측량일', data.mdate, '측량자', data.surveyor],
-      ['계산 방식', data.method === 'ih' ? '기계고식 (I.H)' : '승강식 (Rise & Fall)'],
+      ['계산 방식', isIh ? '기계고식 (I.H)' : '승강식 (Rise & Fall)', '최초표고 (BM1)', num(data.startBm) ?? 10.0],
       [],
-      data.method === 'ih'
+      isIh
         ? ['측점', '후시 BS (m)', '중시 IS (m)', '전시 FS (m)', '기계고 IH (m)', '지반고 GH (m)', '비고']
         : ['측점', '후시 BS (m)', '중시 IS (m)', '전시 FS (m)', '승 Rise (m)', '강 Fall (m)', '지반고 GH (m)', '비고']
     ];
 
-    const body = computed.rows.map(r => (
-      data.method === 'ih'
-        ? [r.point, r.bs, r.is, r.fs, fmt(r.calcIh), fmt(r.calcGh), r.remarks]
-        : [r.point, r.bs, r.is, r.fs, fmt(r.calcRise), fmt(r.calcFall), fmt(r.calcGh), r.remarks]
-    ));
+    const body = computed.rows.map((r, i) => {
+      const rNum = 6 + i; // 데이터 6행 시작
+
+      if (isIh) {
+        // 기계고식 (I.H)
+        const ghFormula = i === 0
+          ? `=$D$3`
+          : `=IF(NOT(ISBLANK(D${rNum})), E${rNum - 1} - D${rNum}, IF(NOT(ISBLANK(C${rNum})), E${rNum - 1} - C${rNum}, ""))`;
+
+        const ihFormula = `=IF(ISBLANK(B${rNum}), "", F${rNum} + B${rNum})`;
+
+        return [
+          r.point,
+          r.bs,
+          r.is,
+          r.fs,
+          ihFormula,
+          ghFormula,
+          r.remarks
+        ];
+      } else {
+        // 승강식 (Rise & Fall)
+        const ghFormula = i === 0
+          ? `=$D$3`
+          : `=IF(NOT(ISBLANK(E${rNum})), G${rNum - 1} + E${rNum}, IF(NOT(ISBLANK(F${rNum})), G${rNum - 1} - F${rNum}, G${rNum - 1}))`;
+
+        const riseStr = r.calcRise !== null && r.calcRise !== undefined ? `+${fmt(r.calcRise)}` : '';
+        const fallStr = r.calcFall !== null && r.calcFall !== undefined ? `-${fmt(r.calcFall)}` : '';
+
+        return [
+          r.point,
+          r.bs,
+          r.is,
+          r.fs,
+          riseStr,
+          fallStr,
+          ghFormula,
+          r.remarks
+        ];
+      }
+    });
+
+    const lastRow = computed.rows.length > 0 ? 6 + computed.rows.length - 1 : 6;
+    const sumRow = lastRow + 2;
+    const ghRow = lastRow + 3;
+    const ghCol = isIh ? 'F' : 'G';
 
     const footer = [
       [],
-      ['합계 ∑BS', fmt(computed.sumBs), '합계 ∑FS', fmt(computed.sumFs), '∑BS - ∑FS', fmt(computed.diffSight)],
-      ['최초표고', fmt(computed.firstGh), '최종표고', fmt(computed.lastGh), '최종 - 최초', fmt(computed.diffGh)],
-      ['검산 결과', computed.pageCheckPass ? '검산 일치 (정상)' : '오류 발생']
+      ['합계 ∑BS', `=SUM(B6:B${lastRow})`, '합계 ∑FS', `=SUM(D6:D${lastRow})`, '∑BS - ∑FS', `=B${sumRow}-D${sumRow}`],
+      ['최초표고', `=${ghCol}6`, '최종표고', `=${ghCol}${lastRow}`, '최종 - 최초', `=D${ghRow}-B${ghRow}`],
+      ['검산 결과', `=IF(ABS(F${sumRow}-F${ghRow})<0.001, "검산 일치 (정상)", "오류 발생")`]
     ];
 
     return head.concat(body).concat(footer).map(row => row.map(v => {
@@ -263,6 +305,7 @@ export const StandardLevelTab: React.FC<Props> = ({ onUpdateHeader, onToast, loa
       return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
     }).join(',')).join('\r\n');
   };
+
 
   const handleDownloadCsv = () => {
     const csv = '\uFEFF' + buildCsv();
