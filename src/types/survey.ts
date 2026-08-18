@@ -110,3 +110,36 @@ export interface StandardSurveyData {
   mdate: string;      // 일자
   rows: StandardRow[];
 }
+
+/**
+ * 맨홀명, 숫자, 비고 기반 유연 검색 헬퍼 함수
+ * 예: '1' 또는 '01' 입력시 'MH01', 'MH1', 'MH-01' 등 유연 매칭
+ */
+export function matchManholeByNameOrNumber(searchTerm: string, mhName: string, remarks?: string): boolean {
+  if (!searchTerm.trim()) return true;
+  const term = searchTerm.trim().toLowerCase();
+  const targetName = mhName.toLowerCase();
+  const targetRemarks = (remarks || '').toLowerCase();
+
+  // 1. 단순 문자열/비고 포함 여부
+  if (targetName.includes(term) || targetRemarks.includes(term)) {
+    return true;
+  }
+
+  // 2. 숫자(Digits) 추출 비교
+  const termDigits = term.replace(/\D/g, '');
+  const targetDigits = targetName.replace(/\D/g, '');
+
+  if (termDigits.length > 0 && targetDigits.length > 0) {
+    const termInt = parseInt(termDigits, 10);
+    const targetInt = parseInt(targetDigits, 10);
+
+    if (!isNaN(termInt) && !isNaN(targetInt)) {
+      if (termInt === targetInt) return true;
+      if (targetDigits.includes(termDigits)) return true;
+    }
+  }
+
+  return false;
+}
+

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { TrenchSurveyData, TrenchRow, PipeType, ManholePhotoGPS } from '../types/survey';
+import { TrenchSurveyData, TrenchRow, PipeType, ManholePhotoGPS, matchManholeByNameOrNumber } from '../types/survey';
 import { PP_DOUBLE_SPECS, STORMWATER_SPECS, findPipeThickness } from '../data/pipeSpecs';
-import { Download, Copy, RefreshCw, RotateCcw, FileSpreadsheet, Check, AlertCircle, Camera, MapPin, Sparkles, Database } from 'lucide-react';
+import { Download, Copy, RefreshCw, RotateCcw, FileSpreadsheet, Check, AlertCircle, Camera, MapPin, Sparkles, Database, Search } from 'lucide-react';
 import { getSavedManholes } from './ManholeDbModal';
 
 interface Props {
@@ -51,6 +51,26 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
   const [openDetail, setOpenDetail] = useState<Record<string, boolean>>({});
   const [armReset, setArmReset] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+
+  // 맨홀 검색 자동완성 팝업 상태
+  const [showStartMhPopup, setShowStartMhPopup] = useState(false);
+  const [showEndMhPopup, setShowEndMhPopup] = useState(false);
+
+  useEffect(() => {
+    const handleStorageChange = () => {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          setData(JSON.parse(saved));
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
 
   useEffect(() => {
     if (loadedData) {
@@ -670,7 +690,7 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px', flexWrap: 'wrap', gap: '4px' }}>
                 <label style={{ color: 'var(--ink)', fontWeight: 700, fontSize: '11.5px', margin: 0 }}>
                   <Database size={13} style={{ verticalAlign: 'text-bottom', marginRight: '4px' }} />
-                  맨홀 명칭 입력 & CAD 관저고(Inv EL) DB 연동
+                  맨홀 명칭 입력 & CAD 관저고(Inv EL) DB 연동 (숫자만 입력 가능)
                 </label>
                 <button
                   type="button"
@@ -678,22 +698,24 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
                   style={{ fontSize: '10.5px', padding: '3px 8px', minWidth: 'auto' }}
                   onClick={() => {
                     const mhList = getSavedManholes();
-                    const sName = (data.startMhName || '').trim().toUpperCase();
-                    const eName = (data.endMhName || '').trim().toUpperCase();
+                    const sName = (data.startMhName || '').trim();
+                    const eName = (data.endMhName || '').trim();
 
-                    const startItem = mhList.find(m => m.name.toUpperCase() === sName);
-                    const endItem = mhList.find(m => m.name.toUpperCase() === eName);
+                    const startItem = mhList.find(m => matchManholeByNameOrNumber(sName, m.name, m.remarks));
+                    const endItem = mhList.find(m => matchManholeByNameOrNumber(eName, m.name, m.remarks));
 
                     if (startItem || endItem) {
                       setData(prev => ({
                         ...prev,
+                        startMhName: startItem ? startItem.name : prev.startMhName,
                         startInv: startItem ? startItem.invertEl : prev.startInv,
+                        endMhName: endItem ? endItem.name : prev.endMhName,
                         endInv: endItem ? endItem.invertEl : prev.endInv,
-                        secName: `${sName || '시점'} ~ ${eName || '종점'}`
+                        secName: `${(startItem ? startItem.name : prev.startMhName) || '시점'} ~ ${(endItem ? endItem.name : prev.endMhName) || '종점'}`
                       }));
-                      onToast(`⚡ 맨홀 DB 관저고 자동 불러오기 완료! (${startItem ? startItem.name + ':' + startItem.invertEl : ''} ${endItem ? endItem.name + ':' + endItem.invertEl : ''})`);
+                      onToast(`⚡ 맨홀 DB 관저고 불러오기 완료! (${startItem ? startItem.name + ':' + startItem.invertEl + 'm' : ''} ${endItem ? endItem.name + ':' + endItem.invertEl + 'm' : ''})`);
                     } else {
-                      onToast(`맨홀 DB에 '${sName || '시점'}' 또는 '${eName || '종점'}' 관저고가 없습니다. 맨홀DB 버튼에서 등록해주세요.`);
+                      onToast(`맨홀 DB에서 '${sName || '시점'}' 또는 '${eName || '종점'}' 매칭 데이터를 찾지 못했습니다.`);
                     }
                   }}
                 >
@@ -702,61 +724,182 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                <div className="f">
-                  <label style={{ fontSize: '11px' }}>시점 맨홀명</label>
+                {/* 시점 맨홀 입력 */}
+                <div className="f" style={{ position: 'relative' }}>
+                  <label style={{ fontSize: '11px' }}>시점 맨홀명 (예: 1, 01, MH01)</label>
                   <div className="ctrl">
                     <input
                       type="text"
-                      placeholder="예: MH01"
+                      placeholder="예: 1 또는 MH01"
                       value={data.startMhName || ''}
+                      onFocus={() => setShowStartMhPopup(true)}
+                      onBlur={() => setTimeout(() => setShowStartMhPopup(false), 200)}
                       onChange={e => {
                         const val = e.target.value;
-                        const sUpper = val.trim().toUpperCase();
                         const mhList = getSavedManholes();
-                        const found = mhList.find(m => m.name.toUpperCase() === sUpper);
+                        const found = val.trim() ? mhList.find(m => matchManholeByNameOrNumber(val, m.name, m.remarks)) : null;
 
                         setData(prev => ({
                           ...prev,
                           startMhName: val,
                           startInv: found ? found.invertEl : prev.startInv,
-                          secName: `${val || '시점'} ~ ${prev.endMhName || '종점'}`
+                          secName: `${found ? found.name : val || '시점'} ~ ${prev.endMhName || '종점'}`
                         }));
-                        if (found) {
-                          onToast(`✓ ${found.name} 관저고(${found.invertEl}m) 자동적용!`);
-                        }
+                        setShowStartMhPopup(true);
                       }}
                     />
                   </div>
+
+                  {/* 시점 맨홀 자동완성 팝업 */}
+                  {showStartMhPopup && (() => {
+                    const mhList = getSavedManholes();
+                    const val = (data.startMhName || '').trim();
+                    const filtered = mhList.filter(m => matchManholeByNameOrNumber(val, m.name, m.remarks));
+                    if (filtered.length === 0) return null;
+
+                    return (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: 0,
+                          right: 0,
+                          zIndex: 60,
+                          backgroundColor: 'var(--surface)',
+                          border: '1px solid var(--primary)',
+                          borderRadius: '8px',
+                          boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
+                          maxHeight: '180px',
+                          overflowY: 'auto',
+                          marginTop: '4px'
+                        }}
+                      >
+                        <div style={{ padding: '4px 8px', fontSize: '10px', color: 'var(--ink-3)', background: 'var(--surface-2)', borderBottom: '1px solid var(--line)' }}>
+                          🔍 추천 맨홀 ({filtered.length}개) - 터치시 적용
+                        </div>
+                        {filtered.map(m => (
+                          <div
+                            key={m.id}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              setData(prev => ({
+                                ...prev,
+                                startMhName: m.name,
+                                startInv: m.invertEl,
+                                secName: `${m.name} ~ ${prev.endMhName || '종점'}`
+                              }));
+                              setShowStartMhPopup(false);
+                              onToast(`✓ 시점 '${m.name}' (관저고 ${m.invertEl}m) 적용 완료!`);
+                            }}
+                            style={{
+                              padding: '8px 10px',
+                              cursor: 'pointer',
+                              borderBottom: '1px solid var(--line-2)',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              fontSize: '12px'
+                            }}
+                          >
+                            <span style={{ fontWeight: 700, color: 'var(--primary)' }}>{m.name}</span>
+                            <span style={{ fontWeight: 600, color: 'var(--ink)' }}>{m.invertEl} m</span>
+                            {m.remarks && <span style={{ color: 'var(--ink-3)', fontSize: '10.5px' }}>({m.remarks})</span>}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
 
-                <div className="f">
-                  <label style={{ fontSize: '11px' }}>종점 맨홀명</label>
+                {/* 종점 맨홀 입력 */}
+                <div className="f" style={{ position: 'relative' }}>
+                  <label style={{ fontSize: '11px' }}>종점 맨홀명 (예: 2, 02, MH02)</label>
                   <div className="ctrl">
                     <input
                       type="text"
-                      placeholder="예: MH02"
+                      placeholder="예: 2 또는 MH02"
                       value={data.endMhName || ''}
+                      onFocus={() => setShowEndMhPopup(true)}
+                      onBlur={() => setTimeout(() => setShowEndMhPopup(false), 200)}
                       onChange={e => {
                         const val = e.target.value;
-                        const eUpper = val.trim().toUpperCase();
                         const mhList = getSavedManholes();
-                        const found = mhList.find(m => m.name.toUpperCase() === eUpper);
+                        const found = val.trim() ? mhList.find(m => matchManholeByNameOrNumber(val, m.name, m.remarks)) : null;
 
                         setData(prev => ({
                           ...prev,
                           endMhName: val,
                           endInv: found ? found.invertEl : prev.endInv,
-                          secName: `${prev.startMhName || '시점'} ~ ${val || '종점'}`
+                          secName: `${prev.startMhName || '시점'} ~ ${found ? found.name : val || '종점'}`
                         }));
-                        if (found) {
-                          onToast(`✓ ${found.name} 관저고(${found.invertEl}m) 자동적용!`);
-                        }
+                        setShowEndMhPopup(true);
                       }}
                     />
                   </div>
+
+                  {/* 종점 맨홀 자동완성 팝업 */}
+                  {showEndMhPopup && (() => {
+                    const mhList = getSavedManholes();
+                    const val = (data.endMhName || '').trim();
+                    const filtered = mhList.filter(m => matchManholeByNameOrNumber(val, m.name, m.remarks));
+                    if (filtered.length === 0) return null;
+
+                    return (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: 0,
+                          right: 0,
+                          zIndex: 60,
+                          backgroundColor: 'var(--surface)',
+                          border: '1px solid var(--ok)',
+                          borderRadius: '8px',
+                          boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
+                          maxHeight: '180px',
+                          overflowY: 'auto',
+                          marginTop: '4px'
+                        }}
+                      >
+                        <div style={{ padding: '4px 8px', fontSize: '10px', color: 'var(--ink-3)', background: 'var(--surface-2)', borderBottom: '1px solid var(--line)' }}>
+                          🔍 추천 맨홀 ({filtered.length}개) - 터치시 적용
+                        </div>
+                        {filtered.map(m => (
+                          <div
+                            key={m.id}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              setData(prev => ({
+                                ...prev,
+                                endMhName: m.name,
+                                endInv: m.invertEl,
+                                secName: `${prev.startMhName || '시점'} ~ ${m.name}`
+                              }));
+                              setShowEndMhPopup(false);
+                              onToast(`✓ 종점 '${m.name}' (관저고 ${m.invertEl}m) 적용 완료!`);
+                            }}
+                            style={{
+                              padding: '8px 10px',
+                              cursor: 'pointer',
+                              borderBottom: '1px solid var(--line-2)',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              fontSize: '12px'
+                            }}
+                          >
+                            <span style={{ fontWeight: 700, color: 'var(--ok)' }}>{m.name}</span>
+                            <span style={{ fontWeight: 600, color: 'var(--ink)' }}>{m.invertEl} m</span>
+                            {m.remarks && <span style={{ color: 'var(--ink-3)', fontSize: '10.5px' }}>({m.remarks})</span>}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
+
 
             <div className="f wide">
               <label>시점 관저고 <i>m</i></label>

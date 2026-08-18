@@ -102,7 +102,22 @@ export function App() {
         isOpen={isMhDbModalOpen}
         onClose={() => setIsMhDbModalOpen(false)}
         onToast={showToast}
+        onSelectManhole={(type, item) => {
+          setActiveTab('trench');
+          const currentTrench = JSON.parse(localStorage.getItem('survey_trench_data_v2') || '{}');
+          const updated = {
+            ...currentTrench,
+            startMhName: type === 'start' ? item.name : (currentTrench.startMhName || 'MH01'),
+            startInv: type === 'start' ? item.invertEl : (currentTrench.startInv || '-0.430'),
+            endMhName: type === 'end' ? item.name : (currentTrench.endMhName || 'MH02'),
+            endInv: type === 'end' ? item.invertEl : (currentTrench.endInv || '-0.190'),
+          };
+          updated.secName = `${updated.startMhName || '시점'} ~ ${updated.endMhName || '종점'}`;
+          localStorage.setItem('survey_trench_data_v2', JSON.stringify(updated));
+          setLoadedTrenchData(updated);
+        }}
       />
+
 
       {/* Floating Toast Notification */}
       <div className={`toast ${toastMsg ? 'show' : ''}`} role="status" aria-live="polite">

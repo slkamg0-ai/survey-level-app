@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { ManholeMasterItem } from '../types/survey';
-import { Database, Plus, Trash2, X, FileText, Check, Upload, Search } from 'lucide-react';
+import { ManholeMasterItem, matchManholeByNameOrNumber } from '../types/survey';
+import { Database, Plus, Trash2, X, FileText, Upload, Search } from 'lucide-react';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   onToast: (msg: string) => void;
   onSelectManholes?: (startMh: ManholeMasterItem | null, endMh: ManholeMasterItem | null) => void;
+  onSelectManhole?: (type: 'start' | 'end', item: ManholeMasterItem) => void;
 }
 
 export const MANHOLE_DB_KEY = 'survey_manhole_master_db_v1';
@@ -38,7 +39,8 @@ export function saveManholeList(list: ManholeMasterItem[]) {
 export const ManholeDbModal: React.FC<Props> = ({
   isOpen,
   onClose,
-  onToast
+  onToast,
+  onSelectManhole
 }) => {
   const [items, setItems] = useState<ManholeMasterItem[]>(() => getSavedManholes());
   const [mhName, setMhName] = useState('');
@@ -163,9 +165,32 @@ export const ManholeDbModal: React.FC<Props> = ({
     onToast(`삭제되었습니다: ${name}`);
   };
 
+  const handleApplyToSurvey = (type: 'start' | 'end', item: ManholeMasterItem) => {
+    if (onSelectManhole) {
+      onSelectManhole(type, item);
+    } else {
+      try {
+        const saved = localStorage.getItem('survey_trench_data_v2');
+        const data = saved ? JSON.parse(saved) : {};
+        if (type === 'start') {
+          data.startMhName = item.name;
+          data.startInv = item.invertEl;
+        } else {
+          data.endMhName = item.name;
+          data.endInv = item.invertEl;
+        }
+        data.secName = `${data.startMhName || '시점'} ~ ${data.endMhName || '종점'}`;
+        localStorage.setItem('survey_trench_data_v2', JSON.stringify(data));
+        window.dispatchEvent(new Event('storage'));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    onToast(`⚡ '${item.name}' 관저고(${item.invertEl}m)가 야장 ${type === 'start' ? '시점' : '종점'}으로 적용되었습니다!`);
+  };
+
   const filteredItems = items.filter(i =>
-    i.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (i.remarks && i.remarks.toLowerCase().includes(searchTerm.toLowerCase()))
+    matchManholeByNameOrNumber(searchTerm, i.name, i.remarks)
   );
 
   return (
@@ -309,10 +334,10 @@ export const ManholeDbModal: React.FC<Props> = ({
               <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--ink-2)' }}>
                 📍 등록된 맨홀 DB ({items.length}개)
               </span>
-              <div style={{ position: 'relative', width: '140px' }}>
+              <div style={{ position: 'relative', width: '180px' }}>
                 <input
                   type="text"
-                  placeholder="맨홀 검색..."
+                  placeholder="검색 (이름 또는 숫자 예: 1, 01)..."
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
                   style={{ height: '28px', fontSize: '11px', paddingLeft: '22px', width: '100%' }}
@@ -323,7 +348,7 @@ export const ManholeDbModal: React.FC<Props> = ({
 
             {filteredItems.length === 0 ? (
               <div style={{ padding: '24px 10px', textAlign: 'center', color: 'var(--ink-3)', fontSize: '12.5px' }}>
-                등록된 맨홀 데이터가 없습니다. 상단에서 추가해보세요!
+                검색된 맨홀 데이터가 없습니다. (숫자로 검색: 예: 1, 01)
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '350px', overflowY: 'auto' }}>
@@ -337,7 +362,9 @@ export const ManholeDbModal: React.FC<Props> = ({
                       border: '1px solid var(--line)',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'space-between'
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: '6px'
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -354,19 +381,55 @@ export const ManholeDbModal: React.FC<Props> = ({
                       )}
                     </div>
 
-                    <button
-                      onClick={() => handleDeleteItem(item.id, item.name)}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: 'var(--ink-3)',
-                        padding: '4px',
-                        cursor: 'pointer'
-                      }}
-                      title="삭제"
-                    >
-                      <Trash2 size={15} />
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <button
+                        type="button"
+                        onClick={() => handleApplyToSurvey('start', item)}
+                        style={{
+                          fontSize: '11px',
+                          padding: '3px 7px',
+                          borderRadius: '5px',
+                          border: '1px solid var(--primary)',
+                          background: 'var(--primary-bg)',
+                          color: 'var(--primary)',
+                          fontWeight: 600,
+                          cursor: 'pointer'
+                        }}
+                        title="야장 시점 맨홀로 전송 적용"
+                      >
+                        🚩 시점 적용
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleApplyToSurvey('end', item)}
+                        style={{
+                          fontSize: '11px',
+                          padding: '3px 7px',
+                          borderRadius: '5px',
+                          border: '1px solid var(--ok)',
+                          background: 'rgba(34, 197, 94, 0.1)',
+                          color: 'var(--ok)',
+                          fontWeight: 600,
+                          cursor: 'pointer'
+                        }}
+                        title="야장 종점 맨홀로 전송 적용"
+                      >
+                        🏁 종점 적용
+                      </button>
+                      <button
+                        onClick={() => handleDeleteItem(item.id, item.name)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--ink-3)',
+                          padding: '4px',
+                          cursor: 'pointer'
+                        }}
+                        title="삭제"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -377,3 +440,4 @@ export const ManholeDbModal: React.FC<Props> = ({
     </div>
   );
 };
+
