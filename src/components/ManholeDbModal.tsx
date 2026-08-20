@@ -134,7 +134,10 @@ export function parseManholeBlock(content: string): ManholeMasterItem[] {
   const lines = content.split(/\r?\n/).filter(l => l.trim());
   if (lines.length === 0) return [];
 
-  const split = (l: string) => l.split(/[,\t]|\s{1,}/).filter(Boolean);
+  // 쉼표·탭으로 나뉜 파일은 빈 칸도 자리를 지켜야 한다.
+  // 빈 칸을 걸러내면 뒤 열이 앞으로 밀려 좌표가 관저고 자리에 들어간다.
+  const split = (l: string) =>
+    /[,\t]/.test(l) ? l.split(/[,\t]/) : l.split(/\s+/).filter(Boolean);
 
   // 첫 줄이 헤더인지 판단
   const cols = detectColumns(split(lines[0]));
