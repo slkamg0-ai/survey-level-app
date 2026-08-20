@@ -46,6 +46,35 @@ export interface ManholeMasterItem {
   name: string;      // 맨홀 명칭 (예: MH01, MH02)
   invertEl: string;  // CAD 설계 관저고 (예: -0.430, 10.250)
   remarks?: string;  // 비고 (예: 오수1공구)
+  /**
+   * CAD 평면 좌표 (m). 거리 계산은 √(Δ²+Δ²) 이라 X·Y 입력 순서가 바뀌어도
+   * 결과가 같으므로 도면 표기(N,E 또는 E,N) 그대로 넣어도 된다.
+   */
+  x?: string;
+  y?: string;
+  /** 도면 연장표상 다음 맨홀까지 거리 (m). 좌표 계산값과 대조하는 검산용 */
+  distToNext?: string;
+}
+
+/** 노선 — 맨홀을 상류에서 하류 순서대로 담는다. 연속한 두 맨홀이 한 구간이 된다 */
+export interface SurveyRoute {
+  id: string;
+  name: string;
+  manholeIds: string[];
+  updatedAt: string;
+}
+
+/** 노선에서 파생된 한 구간 */
+export interface RouteSpan {
+  index: number;
+  start: ManholeMasterItem;
+  end: ManholeMasterItem;
+  /** 좌표로 계산한 거리 (좌표가 없으면 null) */
+  coordLength: number | null;
+  /** 도면 연장표에 적힌 거리 (없으면 null) */
+  sheetLength: number | null;
+  /** 실제로 쓸 연장 — 좌표값 우선, 없으면 도면값 */
+  length: number | null;
 }
 
 export interface TrenchSurveyData {
@@ -78,6 +107,8 @@ export interface TrenchSurveyData {
   customOffsetM?: string;             // 검측용 사용자 지정 오프셋 (m)
   specConfirmedSignature?: string;    // 확정 당시의 기초 제원 지문
   specConfirmedAt?: string;           // 기초 제원 확정 시각 (ISO)
+  routeId?: string;                   // 다구간 측량 중인 노선
+  spanIndex?: number;                 // 노선 내 현재 구간 번호 (0부터)
 }
 
 /**

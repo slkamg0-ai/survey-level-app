@@ -10,9 +10,10 @@ interface HeaderProps {
   onToggleTheme: () => void;
   onOpenJobs?: () => void;
   onOpenMhDb?: () => void;
+  onOpenRoutes?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ secName, ihVal, ihSub, theme, onToggleTheme, onOpenJobs, onOpenMhDb }) => {
+export const Header: React.FC<HeaderProps> = ({ secName, ihVal, ihSub, theme, onToggleTheme, onOpenJobs, onOpenMhDb, onOpenRoutes }) => {
   return (
     <>
       <header className="topbar">
@@ -54,6 +55,28 @@ export const Header: React.FC<HeaderProps> = ({ secName, ihVal, ihSub, theme, on
                 title="맨홀 CAD 관저고 DB"
               >
                 🕳️ 맨홀DB
+              </button>
+            )}
+
+            {onOpenRoutes && (
+              <button
+                onClick={onOpenRoutes}
+                style={{
+                  background: 'var(--surface-2)',
+                  border: '1px solid var(--line)',
+                  borderRadius: '8px',
+                  padding: '6px 8px',
+                  color: 'var(--ink)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  fontSize: '11px',
+                  fontWeight: 600
+                }}
+                title="노선 · 다구간 측량"
+              >
+                🛣️ 노선
               </button>
             )}
 

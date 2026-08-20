@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { TrenchSurveyData, TrenchRow, PipeType, ManholePhotoGPS, matchManholeByNameOrNumber, foundationSignature } from '../types/survey';
 import { buildWarnings, isSpecConfirmed } from '../utils/validation';
 import { SpecGuard, LayerRow } from './SpecGuard';
+import { loadRoutes, buildSpans } from '../utils/routes';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { PP_DOUBLE_SPECS, STORMWATER_SPECS, findPipeThickness } from '../data/pipeSpecs';
 import { Download, Copy, RefreshCw, RotateCcw, FileSpreadsheet, Check, AlertCircle, Camera, MapPin, Sparkles, Database, Search } from 'lucide-react';
 import { getSavedManholes } from './ManholeDbModal';
@@ -64,18 +66,30 @@ const DEFAULT_DATA: TrenchSurveyData = {
  * 현장은 터파기 → 골재 → 레미콘 → 바닥 순으로 같은 지점을 여러 번 재므로
  * 기준별로 따로 남겨야 공정별 검측 이력이 보존된다.
  */
-const measKey = (mode: string, x: number | string) => `${mode}@${x}`;
+const measKey = (spanKey: string, mode: string, x: number | string) => `${spanKey}|${mode}@${x}`;
+
+/** 노선 구간을 구분하는 키. 단일 구간 측량은 'single' */
+const spanKeyOf = (d: TrenchSurveyData) =>
+  d.routeId && d.spanIndex !== undefined ? `${d.routeId}#${d.spanIndex}` : 'single';
 
 /** 저장·불러오기로 들어온 데이터를 항상 기본값과 병합하고 타입을 정리한다 */
 const normalize = (raw: unknown): TrenchSurveyData => {
   const merged = mergeWithDefaults(DEFAULT_DATA, raw);
   if (!merged.meas || typeof merged.meas !== 'object') merged.meas = {};
 
-  // 거리만으로 저장된 구버전 실측값은 당시 선택돼 있던 기준의 것으로 옮긴다
+  // 구버전 실측값 키 승격:
+  //   "0"            → 거리만 (기준·구간 없음)
+  //   "MODE@0"       → 기준까지만
+  //   "span|MODE@0"  → 현재 형식
   const legacyMode = merged.targetHeightMode || 'CUT_BOTTOM';
+  const legacySpan = merged.routeId && merged.spanIndex !== undefined
+    ? `${merged.routeId}#${merged.spanIndex}` : 'single';
   const migrated: Record<string, string> = {};
   Object.keys(merged.meas).forEach(k => {
-    migrated[k.indexOf('@') >= 0 ? k : measKey(legacyMode, k)] = merged.meas[k];
+    let key = k;
+    if (key.indexOf('@') < 0) key = `${legacyMode}@${key}`;
+    if (key.indexOf('|') < 0) key = `${legacySpan}|${key}`;
+    migrated[key] = merged.meas[k];
   });
   merged.meas = migrated;
   // 구버전 저장분에는 step이 문자열로 남아 있을 수 있다 (문자열이면 누가거리 누적이 문자열 연결로 깨진다)
@@ -428,6 +442,32 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
     return rows;
   })();
 
+  /* ── 다구간 노선 ─────────────────────────────── */
+  const routeSpans = React.useMemo(() => {
+    if (!data.routeId) return [];
+    const route = loadRoutes().find(r => r.id === data.routeId) || null;
+    return buildSpans(route, getSavedManholes());
+  }, [data.routeId, data.spanIndex]);
+
+  const currentSpan = data.spanIndex !== undefined ? routeSpans[data.spanIndex] : undefined;
+
+  /** 구간을 옮기면 그 구간의 시·종점 관저고와 연장을 야장에 밀어넣는다 */
+  const goToSpan = (idx: number) => {
+    const sp = routeSpans[idx];
+    if (!sp) return;
+    setData(prev => ({
+      ...prev,
+      spanIndex: idx,
+      startMhName: sp.start.name,
+      endMhName: sp.end.name,
+      secName: `${sp.start.name} ~ ${sp.end.name}`,
+      startInv: sp.start.invertEl,
+      endInv: sp.end.invertEl,
+      len: sp.length !== null ? sp.length.toFixed(2) : prev.len
+    }));
+    onToast(`${sp.start.name} ~ ${sp.end.name} 구간으로 이동`);
+  };
+
   const handleConfirmSpec = () => {
     const now = new Date();
     setData(prev => ({
@@ -478,7 +518,7 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
       // 헤더가 7행이므로 데이터는 8행부터.
       // 참조 셀: B4=기계고, D4=시점관저고, F4=종점관저고, H4=허용오차, B5=연장(관로만)
       const rNum = 8 + i;
-      const rawMeas = data.meas[measKey(csvMode, r.x)];
+      const rawMeas = data.meas[measKey(spanKeyOf(data), csvMode, r.x)];
       const measVal = rawMeas !== undefined && rawMeas.trim() !== '' ? rawMeas.trim() : '';
 
       // 오프셋 (검측 목표 EL − 관저고 EL) — 기준이 바뀌어도 관저고에서 이만큼 떨어져 있다
@@ -1394,6 +1434,35 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
         )}
       </section>
 
+      {/* 노선 구간 이동 — 다구간 측량 중일 때만 */}
+      {currentSpan && (
+        <div className="span-nav">
+          <button
+            type="button"
+            onClick={() => goToSpan(data.spanIndex! - 1)}
+            disabled={data.spanIndex === 0}
+            aria-label="이전 구간"
+          >
+            <ChevronLeft size={18} />
+          </button>
+          <div className="span-nav-body">
+            <b>{currentSpan.start.name} ~ {currentSpan.end.name}</b>
+            <span>
+              구간 {data.spanIndex! + 1} / {routeSpans.length}
+              {currentSpan.length !== null && ` · 연장 ${currentSpan.length.toFixed(2)} m`}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => goToSpan(data.spanIndex! + 1)}
+            disabled={data.spanIndex! >= routeSpans.length - 1}
+            aria-label="다음 구간"
+          >
+            <ChevronRight size={18} />
+          </button>
+        </div>
+      )}
+
       {/* 기초 층 구성 확인 게이트 + 오입력 경고 */}
       <SpecGuard
         warnings={warnings}
@@ -1427,11 +1496,12 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
             type="button"
             className="mini"
             onClick={() => {
-              // 다른 공정(기준)에서 잡아둔 실측값까지 날리지 않도록 현재 기준만 비운다
+              // 다른 구간·공정에서 잡아둔 실측값까지 날리지 않도록 현재 것만 비운다
               setData(prev => {
+                const prefix = `${spanKeyOf(prev)}|${mode}@`;
                 const kept: Record<string, string> = {};
                 Object.keys(prev.meas).forEach(k => {
-                  if (!k.startsWith(`${mode}@`)) kept[k] = prev.meas[k];
+                  if (!k.startsWith(prefix)) kept[k] = prev.meas[k];
                 });
                 return { ...prev, meas: kept };
               });
@@ -1471,7 +1541,7 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
                   ? computed.rows.filter((_, idx) => idx === 0 || idx === computed.rows.length - 1)
                   : computed.rows
               ).map((r, i) => {
-                const key = measKey(mode, r.x);
+                const key = measKey(spanKeyOf(data), mode, r.x);
                 const rawMeas = data.meas[key] || '';
                 const measVal = parseFloat(rawMeas);
                 const isDetailOpen = !!openDetail[key];

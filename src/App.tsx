@@ -4,7 +4,9 @@ import { Tabs } from './components/Tabs';
 import { TrenchSurveyTab } from './components/TrenchSurveyTab';
 import { StandardLevelTab } from './components/StandardLevelTab';
 import { JobSessionModal } from './components/JobSessionModal';
-import { ManholeDbModal } from './components/ManholeDbModal';
+import { ManholeDbModal, getSavedManholes } from './components/ManholeDbModal';
+import { RouteModal } from './components/RouteModal';
+import { loadRoutes, buildSpans } from './utils/routes';
 import { TrenchSurveyData, StandardSurveyData } from './types/survey';
 import './styles/index.css';
 
@@ -29,6 +31,7 @@ export function App() {
   // 모달 상태
   const [isJobsModalOpen, setIsJobsModalOpen] = useState(false);
   const [isMhDbModalOpen, setIsMhDbModalOpen] = useState(false);
+  const [isRouteModalOpen, setIsRouteModalOpen] = useState(false);
 
   // 로드 콜백 트리거
   const [loadedTrenchData, setLoadedTrenchData] = useState<TrenchSurveyData | null>(null);
@@ -65,6 +68,7 @@ export function App() {
         onToggleTheme={toggleTheme}
         onOpenJobs={() => setIsJobsModalOpen(true)}
         onOpenMhDb={() => setIsMhDbModalOpen(true)}
+        onOpenRoutes={() => setIsRouteModalOpen(true)}
       />
 
       {activeTab === 'trench' ? (
@@ -124,6 +128,34 @@ export function App() {
         }}
       />
 
+
+      {/* 노선 · 다구간 측량 */}
+      <RouteModal
+        isOpen={isRouteModalOpen}
+        onClose={() => setIsRouteModalOpen(false)}
+        onToast={showToast}
+        onStartSpan={(routeId, spanIndex) => {
+          const route = loadRoutes().find(r => r.id === routeId) || null;
+          const span = buildSpans(route, getSavedManholes())[spanIndex];
+          if (!span) return;
+
+          const current = readJson('survey_trench_data_v2');
+          const updated = {
+            ...current,
+            routeId,
+            spanIndex,
+            startMhName: span.start.name,
+            endMhName: span.end.name,
+            secName: `${span.start.name} ~ ${span.end.name}`,
+            startInv: span.start.invertEl,
+            endInv: span.end.invertEl,
+            len: span.length !== null ? span.length.toFixed(2) : (current.len || '')
+          };
+          localStorage.setItem('survey_trench_data_v2', JSON.stringify(updated));
+          setActiveTab('trench');
+          setLoadedTrenchData(updated);
+        }}
+      />
 
       {/* Floating Toast Notification */}
       <div className={`toast ${toastMsg ? 'show' : ''}`} role="status" aria-live="polite">

@@ -19,13 +19,17 @@ export function getSavedManholes(): ManholeMasterItem[] {
       const parsed = JSON.parse(saved);
       // 배열이 아닌 값이 저장돼 있으면 호출부의 filter/map 에서 앱이 죽는다
       if (Array.isArray(parsed)) {
+        const str = (v: unknown) => (v === undefined || v === null ? undefined : String(v));
         return parsed
           .filter(item => item && typeof item === 'object')
           .map((item, i) => ({
             id: String(item.id ?? `mh-${i + 1}`),
             name: String(item.name ?? ''),
             invertEl: String(item.invertEl ?? ''),
-            remarks: item.remarks === undefined ? undefined : String(item.remarks)
+            remarks: str(item.remarks),
+            x: str(item.x),
+            y: str(item.y),
+            distToNext: str(item.distToNext)
           }));
       }
       console.error('맨홀 DB가 배열이 아닙니다. 기본값으로 대체합니다.');
@@ -40,6 +44,110 @@ export function getSavedManholes(): ManholeMasterItem[] {
     { id: '3', name: 'MH03', invertEl: '0.120', remarks: '오수 종점맨홀' },
     { id: '4', name: 'MH04', invertEl: '0.450', remarks: '우수 1호' }
   ];
+}
+
+/**
+ * 한 줄을 맨홀 항목으로 파싱한다.
+ *
+ * 헤더 행이 있으면 열 이름으로 잡고, 없으면 기존 방식(이름·관저고·비고)을 유지한다.
+ * 좌표는 6자리 이상 큰 수라 관저고와 섞일 일이 없지만, 열 이름이 있으면 그쪽을 믿는다.
+ */
+export interface ColumnMap {
+  name: number; invertEl: number; x: number; y: number; dist: number; remarks: number;
+}
+
+const HEADER_PATTERNS: { key: keyof ColumnMap; re: RegExp }[] = [
+  { key: 'name', re: /맨홀|번호|명칭|^name$|^mh$/i },
+  { key: 'invertEl', re: /관저|인버트|invert|^el$|바닥고/i },
+  { key: 'x', re: /^x$|x좌표|경도|easting|^e$/i },
+  { key: 'y', re: /^y$|y좌표|위도|northing|^n$/i },
+  { key: 'dist', re: /거리|연장|간격|length|dist/i },
+  { key: 'remarks', re: /비고|remark|note/i }
+];
+
+export function detectColumns(cells: string[]): ColumnMap | null {
+  const map: ColumnMap = { name: -1, invertEl: -1, x: -1, y: -1, dist: -1, remarks: -1 };
+  let hits = 0;
+  cells.forEach((cell, i) => {
+    const c = cell.trim();
+    HEADER_PATTERNS.forEach(p => {
+      if (map[p.key] === -1 && p.re.test(c)) { map[p.key] = i; hits++; }
+    });
+  });
+  // 맨홀명과 관저고를 못 찾으면 헤더가 아니다
+  return hits >= 2 && map.name >= 0 && map.invertEl >= 0 ? map : null;
+}
+
+export function parseManholeLine(
+  parts: string[], idx: number, cols: ColumnMap | null
+): ManholeMasterItem | null {
+  const at = (i: number) => (i >= 0 && i < parts.length ? parts[i].trim() : '');
+
+  if (cols) {
+    const name = at(cols.name).toUpperCase();
+    const el = at(cols.invertEl);
+    if (!name || !isFinite(parseFloat(el))) return null;
+    return {
+      id: `${Date.now()}_${idx}`,
+      name,
+      invertEl: el,
+      x: at(cols.x) || undefined,
+      y: at(cols.y) || undefined,
+      distToNext: at(cols.dist) || undefined,
+      remarks: at(cols.remarks) || undefined
+    };
+  }
+
+  // 헤더 없음 — 이름, 관저고, [X, Y], [거리], 나머지는 비고
+  if (parts.length < 2) return null;
+  const name = parts[0].trim().toUpperCase();
+  const el = parts[1].trim();
+  if (!name || !isFinite(parseFloat(el))) return null;
+
+  const rest = parts.slice(2).map(p => p.trim());
+  // 좌표는 만 단위 이상의 큰 수로 나란히 오는 경우만 좌표로 본다
+  const isCoord = (v: string) => isFinite(parseFloat(v)) && Math.abs(parseFloat(v)) >= 10000;
+  let x: string | undefined;
+  let y: string | undefined;
+  let consumed = 0;
+  if (rest.length >= 2 && isCoord(rest[0]) && isCoord(rest[1])) {
+    x = rest[0]; y = rest[1]; consumed = 2;
+  }
+  let dist: string | undefined;
+  if (rest.length > consumed && isFinite(parseFloat(rest[consumed])) && !isCoord(rest[consumed])) {
+    dist = rest[consumed];
+    consumed++;
+  }
+
+  return {
+    id: `${Date.now()}_${idx}`,
+    name,
+    invertEl: el,
+    x, y,
+    distToNext: dist,
+    remarks: rest.slice(consumed).join(' ').trim() || undefined
+  };
+}
+
+/** 붙여넣기 텍스트나 파일 내용 전체를 맨홀 목록으로 파싱한다 */
+export function parseManholeBlock(content: string): ManholeMasterItem[] {
+  const lines = content.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length === 0) return [];
+
+  const split = (l: string) => l.split(/[,\t]|\s{1,}/).filter(Boolean);
+
+  // 첫 줄이 헤더인지 판단
+  const cols = detectColumns(split(lines[0]));
+  const body = cols ? lines.slice(1) : lines;
+
+  const out: ManholeMasterItem[] = [];
+  body.forEach((line, idx) => {
+    // 헤더를 못 잡았는데 머리글처럼 보이는 줄은 건너뛴다
+    if (!cols && /맨홀|관저고|invert/i.test(line) && !/-?\d/.test(line.replace(/[^\d.-]/g, ''))) return;
+    const item = parseManholeLine(split(line), idx, cols);
+    if (item) out.push(item);
+  });
+  return out;
 }
 
 export function saveManholeList(list: ManholeMasterItem[]) {
@@ -60,6 +168,9 @@ export const ManholeDbModal: React.FC<Props> = ({
   const [mhName, setMhName] = useState('');
   const [invertEl, setInvertEl] = useState('');
   const [remarks, setRemarks] = useState('');
+  const [coordX, setCoordX] = useState('');
+  const [coordY, setCoordY] = useState('');
+  const [distNext, setDistNext] = useState('');
   const [batchText, setBatchText] = useState('');
   const [showBatchInput, setShowBatchInput] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -80,7 +191,10 @@ export const ManholeDbModal: React.FC<Props> = ({
       id: Date.now().toString(),
       name: mhName.trim().toUpperCase(),
       invertEl: invertEl.trim(),
-      remarks: remarks.trim()
+      remarks: remarks.trim() || undefined,
+      x: coordX.trim() || undefined,
+      y: coordY.trim() || undefined,
+      distToNext: distNext.trim() || undefined
     };
 
     const updated = [newItem, ...items.filter(i => i.name.toUpperCase() !== newItem.name)];
@@ -89,31 +203,18 @@ export const ManholeDbModal: React.FC<Props> = ({
     setMhName('');
     setInvertEl('');
     setRemarks('');
+    setCoordX('');
+    setCoordY('');
+    setDistNext('');
     onToast(`✅ '${newItem.name}' 관저고(${newItem.invertEl}m) 등록 완료`);
   };
 
   const handleBatchImport = () => {
     if (!batchText.trim()) return;
-    const lines = batchText.split('\n');
-    const newItems: ManholeMasterItem[] = [];
-
-    lines.forEach((line, idx) => {
-      const parts = line.split(/[,	\s]+/).filter(Boolean);
-      if (parts.length >= 2) {
-        const name = parts[0].trim().toUpperCase();
-        const el = parts[1].trim();
-        const rem = parts.slice(2).join(' ').trim();
-        newItems.push({
-          id: `${Date.now()}_${idx}`,
-          name,
-          invertEl: el,
-          remarks: rem
-        });
-      }
-    });
+    const newItems = parseManholeBlock(batchText);
 
     if (newItems.length === 0) {
-      onToast('형식에 맞게 입력해주세요 (예: MH01 -0.430)');
+      onToast('형식에 맞게 입력해주세요 (예: MH01 -0.430 195432.12 452110.45 75)');
       return;
     }
 
@@ -135,30 +236,10 @@ export const ManholeDbModal: React.FC<Props> = ({
       const content = e.target?.result as string;
       if (!content) return;
 
-      const lines = content.split(/\r?\n/);
-      const newItems: ManholeMasterItem[] = [];
-
-      lines.forEach((line, idx) => {
-        if (!line.trim() || line.includes('맨홀') || line.includes('관저고') || line.includes('Invert')) return;
-
-        const parts = line.split(/[,	\s]+/).filter(Boolean);
-        if (parts.length >= 2) {
-          const name = parts[0].trim().toUpperCase();
-          const el = parts[1].trim();
-          const rem = parts.slice(2).join(' ').trim();
-          if (name && isFinite(parseFloat(el))) {
-            newItems.push({
-              id: `${Date.now()}_${idx}`,
-              name,
-              invertEl: el,
-              remarks: rem
-            });
-          }
-        }
-      });
+      const newItems = parseManholeBlock(content);
 
       if (newItems.length === 0) {
-        onToast('파일에서 유효한 맨홀 관저고 데이터를 찾지 못했습니다 (형식: MH01, -0.430)');
+        onToast('파일에서 유효한 맨홀 데이터를 찾지 못했습니다 (형식: MH01, -0.430, X, Y, 거리)');
         return;
       }
 
@@ -302,7 +383,7 @@ export const ManholeDbModal: React.FC<Props> = ({
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <textarea
                   rows={4}
-                  placeholder={`CAD 도면 수치 일괄 붙여넣기 예시:\nMH01  -0.430  오수시점\nMH02  -0.190\nMH03  0.120  오수종점`}
+                  placeholder={`CAD 수치 붙여넣기 — 헤더가 있으면 열 이름으로 자동 인식합니다.\n\n맨홀명, 관저고, X, Y, 거리, 비고\nMH01, -0.430, 195432.12, 452110.45, 75, 오수시점\nMH02, -0.190, 195480.33, 452168.10, 62\n\n헤더 없이 'MH01 -0.430' 두 열만 넣어도 됩니다.`}
                   value={batchText}
                   onChange={e => setBatchText(e.target.value)}
                   style={{ width: '100%', fontSize: '12px', padding: '8px', borderRadius: '6px', border: '1px solid var(--line)' }}
@@ -338,6 +419,32 @@ export const ManholeDbModal: React.FC<Props> = ({
                 <button className="btn primary" onClick={handleAddItem} style={{ height: '36px', padding: '0 10px', minWidth: 'auto' }}>
                   <Plus size={16} /> 등록
                 </button>
+
+                {/* 좌표·연장 — 구간 연장 자동 산출용 */}
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="X 좌표 (선택)"
+                  value={coordX}
+                  onChange={e => setCoordX(e.target.value)}
+                  style={{ height: '36px', fontSize: '13px' }}
+                />
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="Y 좌표 (선택)"
+                  value={coordY}
+                  onChange={e => setCoordY(e.target.value)}
+                  style={{ height: '36px', fontSize: '13px' }}
+                />
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="다음 맨홀까지 거리 (선택)"
+                  value={distNext}
+                  onChange={e => setDistNext(e.target.value)}
+                  style={{ height: '36px', fontSize: '13px', gridColumn: 'span 2' }}
+                />
               </div>
             )}
           </div>
@@ -391,6 +498,12 @@ export const ManholeDbModal: React.FC<Props> = ({
                       {item.remarks && (
                         <span style={{ fontSize: '11px', color: 'var(--ink-3)' }}>
                           ({item.remarks})
+                        </span>
+                      )}
+                      {(item.x || item.distToNext) && (
+                        <span style={{ fontSize: '10.5px', color: 'var(--ink-3)', fontFamily: 'var(--mono)' }}>
+                          {item.x && item.y ? '📐 좌표' : ''}
+                          {item.distToNext ? ` ↔ ${item.distToNext}m` : ''}
                         </span>
                       )}
                     </div>
