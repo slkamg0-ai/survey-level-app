@@ -56,10 +56,28 @@ const DEFAULT_DATA: TrenchSurveyData = {
   targetHeightMode: 'CUT_BOTTOM'
 };
 
+/**
+ * 실측값 저장 키.
+ *
+ * 측점 거리만으로 키를 잡으면 검측 기준을 바꿔도 같은 칸을 공유해,
+ * 터파기 검측값이 레미콘 검측 목표와 비교되어 오판정이 난다.
+ * 현장은 터파기 → 골재 → 레미콘 → 바닥 순으로 같은 지점을 여러 번 재므로
+ * 기준별로 따로 남겨야 공정별 검측 이력이 보존된다.
+ */
+const measKey = (mode: string, x: number | string) => `${mode}@${x}`;
+
 /** 저장·불러오기로 들어온 데이터를 항상 기본값과 병합하고 타입을 정리한다 */
 const normalize = (raw: unknown): TrenchSurveyData => {
   const merged = mergeWithDefaults(DEFAULT_DATA, raw);
   if (!merged.meas || typeof merged.meas !== 'object') merged.meas = {};
+
+  // 거리만으로 저장된 구버전 실측값은 당시 선택돼 있던 기준의 것으로 옮긴다
+  const legacyMode = merged.targetHeightMode || 'CUT_BOTTOM';
+  const migrated: Record<string, string> = {};
+  Object.keys(merged.meas).forEach(k => {
+    migrated[k.indexOf('@') >= 0 ? k : measKey(legacyMode, k)] = merged.meas[k];
+  });
+  merged.meas = migrated;
   // 구버전 저장분에는 step이 문자열로 남아 있을 수 있다 (문자열이면 누가거리 누적이 문자열 연결로 깨진다)
   const step = Number(merged.step);
   merged.step = isFinite(step) && step > 0 ? step : 5;
@@ -265,8 +283,9 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
     const sand = num(data.sand) || 0;
     const conc = num(data.conc) || 0;
     const agg = num(data.aggregate) || 0;
-    const mhBaseVal = parseFloat((data.mhBase || '').replace(/[^0-9.+-]/g, ''));
-    const mhBase = isFinite(mhBaseVal) && mhBaseVal > 0 ? mhBaseVal : 0.200; // 맨홀 바닥 슬래브 두께 (기본 0.200m = 20cm)
+    // 0을 넣었는데 조용히 0.200으로 바뀌면 맨홀 터파기 바닥고가 20cm 깊어진다.
+    // 입력한 값을 그대로 쓰고, 0이면 경고로 알린다 (기본 0.200은 DEFAULT_DATA가 제공)
+    const mhBase = num(data.mhBase) ?? 0;
     const dia = num(data.dia);
     const base = t + sand + conc + agg; // 기초 총두께 (관두께+모래+콘크리트+골재)
     const step = data.step > 0 ? data.step : 5;
@@ -434,44 +453,61 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
   const buildCsv = () => {
     const c = computed;
     const nm = data.secName.trim() || '구간';
+    const csvMode = data.targetHeightMode || 'CUT_BOTTOM';
+    const isMhCsv = csvMode.startsWith('MH_');
+    const modeName = MODE_LABELS[csvMode] || '터파기 바닥고';
+
+    // 맨홀 검측은 구간이 아니라 시점·종점 맨홀 두 지점만 대상이다 (화면 야장과 동일)
+    const csvRows = isMhCsv
+      ? c.rows.filter((_, idx) => idx === 0 || idx === c.rows.length - 1)
+      : c.rows;
+
     const head = [
-      ['관로 터파기 측량 야장'],
+      [isMhCsv ? '맨홀 검측 야장' : '관로 터파기 측량 야장'],
       ['구간명', nm, '측량일', data.mdate, '측량자', data.surveyor],
+      ['검측 기준', modeName],
       ['기계고 I.H', c.ih !== null ? c.ih : '', '시점 관저고', c.si !== null ? c.si : '', '종점 관저고', c.ei !== null ? c.ei : '', '허용오차(mm)', (num(data.tol) === null ? 30 : num(data.tol)!)],
-      ['연장', c.L !== null ? c.L : '', '관경', c.dia !== null ? c.dia : '', '관두께', num(data.thick) || 0, '모래기초', num(data.sand) || 0, '콘크리트기초', num(data.conc) || 0],
+      isMhCsv
+        ? ['맨홀 바닥두께', c.mhBase, '콘크리트기초', c.conc, '골재/잡석', c.agg]
+        : ['연장', c.L !== null ? c.L : '', '관경', c.dia !== null ? c.dia : '', '관두께', c.t, '모래기초', c.sand, '콘크리트기초', c.conc, '골재/잡석', c.agg],
       [],
-      ['측점', '누가거리(m)', '터파기고(EL)', '관저고(EL)', '목표읽음(m)', '실측읽음(m)', '편차(cm)', '판정']
+      [isMhCsv ? '맨홀' : '측점', '누가거리(m)', `${modeName}(EL)`, '관저고(EL)', '목표읽음(m)', '실측읽음(m)', '편차(cm)', '판정']
     ];
 
-    const body = c.rows.map((r, i) => {
-      const rNum = 7 + i; // 엑셀 행 번호 (헤더가 6행이므로 7행부터 데이터)
-      const rawMeas = data.meas[String(r.x)];
+    const body = csvRows.map((r, i) => {
+      // 헤더가 7행이므로 데이터는 8행부터.
+      // 참조 셀: B4=기계고, D4=시점관저고, F4=종점관저고, H4=허용오차, B5=연장(관로만)
+      const rNum = 8 + i;
+      const rawMeas = data.meas[measKey(csvMode, r.x)];
       const measVal = rawMeas !== undefined && rawMeas.trim() !== '' ? rawMeas.trim() : '';
 
-      // 오프셋 계산 (터파기고 EL - 관저고 EL)
+      // 오프셋 (검측 목표 EL − 관저고 EL) — 기준이 바뀌어도 관저고에서 이만큼 떨어져 있다
       const targetOffset = r.cutEl - r.invEl;
       const offsetStr = (targetOffset >= 0 ? '+' : '') + targetOffset.toFixed(4);
 
-      // 엑셀 동적 수식 정의
-      // D열 (관저고): 시점/종점/연장 셀 참조 경사 계산
-      const invElFormula = c.si !== null && c.ei !== null && c.L && c.L > 0
-        ? `=IF(ISBLANK($B$4), ${r.invEl.toFixed(3)}, $D$3 - (($D$3 - $F$3) / $B$4) * B${rNum})`
+      // D열 (관저고): 관로는 연장 기준 경사 보간, 맨홀은 각 맨홀 고유값이라 보간하지 않는다
+      const invElFormula = !isMhCsv && c.si !== null && c.ei !== null && c.L && c.L > 0
+        ? `=IF(ISBLANK($B$5), ${r.invEl.toFixed(3)}, $D$4 - (($D$4 - $F$4) / $B$5) * B${rNum})`
         : r.invEl.toFixed(3);
 
-      // C열 (터파기고 EL): 관저고 + 오프셋
+      // C열 (검측 목표 EL): 관저고 + 오프셋
       const cutElFormula = `=IF(ISBLANK(D${rNum}), ${r.cutEl.toFixed(3)}, D${rNum}${offsetStr})`;
 
-      // E열 (목표읽음 m): 기계고 I.H($B$3) - 터파기고(C열)
-      const targetFormula = `=IF(OR(ISBLANK($B$3), ISBLANK(C${rNum})), "", $B$3 - C${rNum})`;
+      // E열 (목표읽음 m): 기계고 I.H($B$4) - 목표 EL(C열)
+      const targetFormula = `=IF(OR(ISBLANK($B$4), ISBLANK(C${rNum})), "", $B$4 - C${rNum})`;
 
       // G열 (편차 cm): (실측F - 목표E) * 100
       const devFormula = `=IF(OR(ISBLANK(F${rNum}), ISBLANK(E${rNum})), "", ROUND((F${rNum} - E${rNum}) * 100, 1))`;
 
-      // H열 (판정): ABS((F - E) * 1000) <= 허용오차H3 적정, F > E 더파기, 아니면 되메움
-      const jdFormula = `=IF(OR(ISBLANK(F${rNum}), ISBLANK(E${rNum})), "", IF(ABS((F${rNum} - E${rNum}) * 1000) <= $H$3, "적정", IF(F${rNum} > E${rNum}, "더파기", "되메움")))`;
+      // H열 (판정): ABS((F - E) * 1000) <= 허용오차 H4 이면 적정, F > E 더파기, 아니면 되메움
+      const jdFormula = `=IF(OR(ISBLANK(F${rNum}), ISBLANK(E${rNum})), "", IF(ABS((F${rNum} - E${rNum}) * 1000) <= $H$4, "적정", IF(F${rNum} > E${rNum}, "더파기", "되메움")))`;
+
+      const label = isMhCsv
+        ? (r.node === 'start' ? (data.startMhName || '시점 MH') : (data.endMhName || '종점 MH'))
+        : (r.node === 'start' ? '시점' : (r.node === 'end' ? '종점' : `+${trimNum(r.x)}`));
 
       return [
-        r.node === 'start' ? '시점' : (r.node === 'end' ? '종점' : `+${trimNum(r.x)}`),
+        label,
         r.x,
         cutElFormula,
         invElFormula,
@@ -1391,8 +1427,15 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
             type="button"
             className="mini"
             onClick={() => {
-              setData(prev => ({ ...prev, meas: {} }));
-              onToast('실측값을 지웠습니다');
+              // 다른 공정(기준)에서 잡아둔 실측값까지 날리지 않도록 현재 기준만 비운다
+              setData(prev => {
+                const kept: Record<string, string> = {};
+                Object.keys(prev.meas).forEach(k => {
+                  if (!k.startsWith(`${mode}@`)) kept[k] = prev.meas[k];
+                });
+                return { ...prev, meas: kept };
+              });
+              onToast(`${MODE_LABELS[mode] || '현재 기준'} 실측값을 지웠습니다`);
             }}
           >
             실측값 지우기
@@ -1428,7 +1471,7 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
                   ? computed.rows.filter((_, idx) => idx === 0 || idx === computed.rows.length - 1)
                   : computed.rows
               ).map((r, i) => {
-                const key = String(r.x);
+                const key = measKey(mode, r.x);
                 const rawMeas = data.meas[key] || '';
                 const measVal = parseFloat(rawMeas);
                 const isDetailOpen = !!openDetail[key];

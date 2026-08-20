@@ -199,13 +199,24 @@ export function buildWarnings(data: TrenchSurveyData, c: ComputedLike): SurveyWa
     }
   }
 
-  // 11. 맨홀 모드인데 맨홀 바닥두께가 0
+  // 11. 맨홀 바닥두께 0 — 맨홀은 바닥슬래브 상단이 곧 맨홀 바닥고(관저고)라
+  //     두께가 0이면 레미콘 타설고가 바닥고와 같아지고 터파기 바닥도 그만큼 얕아진다
   if (isMh && c.mhBase <= 0) {
     w.push({
       id: 'mhbase-zero',
-      level: 'warn',
+      level: 'danger',
       title: '맨홀 바닥두께가 0입니다',
-      detail: '맨홀 검측에서는 바닥 슬래브 두께(보통 0.200 m)가 목표고에 반영됩니다.'
+      detail: '맨홀 바닥슬래브 상단이 맨홀 바닥고(관저고)입니다. 두께가 0이면 레미콘 타설고가 바닥고와 같아지고 터파기 바닥도 그만큼 얕게 나옵니다. 보통 0.200 m입니다.'
+    });
+  }
+
+  // 12. 맨홀 모드에서 관로 전용 제원(모래기초·관두께)은 계산에 쓰이지 않는다
+  if (isMh && c.sand > 0) {
+    w.push({
+      id: 'mh-sand-ignored',
+      level: 'warn',
+      title: '맨홀 검측에서는 모래기초가 계산에 쓰이지 않습니다',
+      detail: `맨홀은 터파기 바닥 → 골재 → 콘크리트 → 맨홀 바닥슬래브 순으로 쌓입니다. 입력된 모래기초 ${c.sand.toFixed(3)} m는 관로 검측에만 반영됩니다.`
     });
   }
 
