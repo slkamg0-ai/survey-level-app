@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { StandardSurveyData, StandardRow, StandardMethod } from '../types/survey';
 import { Plus, Trash2, Download, Copy, RotateCcw, CheckCircle2, AlertCircle, FileSpreadsheet } from 'lucide-react';
+import { mergeWithDefaults, readStored, parseNum } from '../utils/storage';
 
 interface Props {
   onUpdateHeader: (secName: string, ihVal: string, ihSub: string) => void;
@@ -30,21 +31,34 @@ const DEFAULT_DATA: StandardSurveyData = {
   rows: INITIAL_ROWS
 };
 
+const EMPTY_ROW: StandardRow = { id: '', point: '', bs: '', is: '', fs: '', remarks: '' };
+
+/** 저장·불러오기로 들어온 데이터를 기본값과 병합하고 행 구조까지 정리한다 */
+const normalize = (raw: unknown): StandardSurveyData => {
+  const merged = mergeWithDefaults(DEFAULT_DATA, raw);
+  if (!Array.isArray(merged.rows)) {
+    merged.rows = INITIAL_ROWS;
+  } else {
+    // 행마다 필드가 빠져 있어도 계산이 죽지 않도록 채운다
+    merged.rows = merged.rows.map((r, i) => ({
+      ...EMPTY_ROW,
+      ...mergeWithDefaults(EMPTY_ROW, r),
+      id: (r && r.id) || `row-${i + 1}`
+    }));
+  }
+  return merged;
+};
+
 export const StandardLevelTab: React.FC<Props> = ({ onUpdateHeader, onToast, loadedData, onClearLoadedData }) => {
-  const [data, setData] = useState<StandardSurveyData>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      return saved ? JSON.parse(saved) : DEFAULT_DATA;
-    } catch {
-      return DEFAULT_DATA;
-    }
-  });
+  const [data, setData] = useState<StandardSurveyData>(() =>
+    normalize(readStored(STORAGE_KEY, DEFAULT_DATA))
+  );
 
   const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     if (loadedData) {
-      setData(loadedData);
+      setData(normalize(loadedData));
       if (onClearLoadedData) onClearLoadedData();
     }
   }, [loadedData]);
@@ -57,10 +71,7 @@ export const StandardLevelTab: React.FC<Props> = ({ onUpdateHeader, onToast, loa
     }
   }, [data]);
 
-  const num = (v: string): number | null => {
-    const parsed = parseFloat(v.replace(/[^0-9.+-]/g, ''));
-    return isFinite(parsed) ? parsed : null;
-  };
+  const num = parseNum;
 
   const fmt = (v: number | null | undefined, d = 3): string => {
     if (v === null || v === undefined || !isFinite(v)) return '—';

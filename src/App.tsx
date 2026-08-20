@@ -8,6 +8,16 @@ import { ManholeDbModal } from './components/ManholeDbModal';
 import { TrenchSurveyData, StandardSurveyData } from './types/survey';
 import './styles/index.css';
 
+/** 손상된 저장값이 있어도 렌더가 죽지 않도록 감싼 읽기 */
+const readJson = (key: string): any => {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+};
+
 export function App() {
   const [activeTab, setActiveTab] = useState<'trench' | 'standard'>('trench');
   const [theme, setTheme] = useState<'dark' | 'light'>('light');
@@ -80,12 +90,8 @@ export function App() {
         isOpen={isJobsModalOpen}
         onClose={() => setIsJobsModalOpen(false)}
         activeTab={activeTab}
-        currentTrenchData={
-          JSON.parse(localStorage.getItem('survey_trench_data_v2') || '{}')
-        }
-        currentStandardData={
-          JSON.parse(localStorage.getItem('survey_standard_data_v2') || '{}')
-        }
+        currentTrenchData={readJson('survey_trench_data_v2')}
+        currentStandardData={readJson('survey_standard_data_v2')}
         onLoadTrenchData={(data) => {
           setActiveTab('trench');
           setLoadedTrenchData(data);
@@ -104,7 +110,7 @@ export function App() {
         onToast={showToast}
         onSelectManhole={(type, item) => {
           setActiveTab('trench');
-          const currentTrench = JSON.parse(localStorage.getItem('survey_trench_data_v2') || '{}');
+          const currentTrench = readJson('survey_trench_data_v2');
           const updated = {
             ...currentTrench,
             startMhName: type === 'start' ? item.name : (currentTrench.startMhName || 'MH01'),

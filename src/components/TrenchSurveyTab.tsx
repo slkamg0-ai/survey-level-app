@@ -3,6 +3,7 @@ import { TrenchSurveyData, TrenchRow, PipeType, ManholePhotoGPS, matchManholeByN
 import { PP_DOUBLE_SPECS, STORMWATER_SPECS, findPipeThickness } from '../data/pipeSpecs';
 import { Download, Copy, RefreshCw, RotateCcw, FileSpreadsheet, Check, AlertCircle, Camera, MapPin, Sparkles, Database, Search } from 'lucide-react';
 import { getSavedManholes } from './ManholeDbModal';
+import { mergeWithDefaults, readStored, parseNum } from '../utils/storage';
 
 interface Props {
   onUpdateHeader: (secName: string, ihVal: string, ihSub: string) => void;
@@ -39,15 +40,20 @@ const DEFAULT_DATA: TrenchSurveyData = {
   targetHeightMode: 'CUT_BOTTOM'
 };
 
+/** 저장·불러오기로 들어온 데이터를 항상 기본값과 병합하고 타입을 정리한다 */
+const normalize = (raw: unknown): TrenchSurveyData => {
+  const merged = mergeWithDefaults(DEFAULT_DATA, raw);
+  if (!merged.meas || typeof merged.meas !== 'object') merged.meas = {};
+  // 구버전 저장분에는 step이 문자열로 남아 있을 수 있다 (문자열이면 누가거리 누적이 문자열 연결로 깨진다)
+  const step = Number(merged.step);
+  merged.step = isFinite(step) && step > 0 ? step : 5;
+  return merged;
+};
+
 export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, loadedData, onClearLoadedData }) => {
-  const [data, setData] = useState<TrenchSurveyData>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      return saved ? JSON.parse(saved) : DEFAULT_DATA;
-    } catch {
-      return DEFAULT_DATA;
-    }
-  });
+  const [data, setData] = useState<TrenchSurveyData>(() =>
+    normalize(readStored(STORAGE_KEY, DEFAULT_DATA))
+  );
 
   const [openDetail, setOpenDetail] = useState<Record<string, boolean>>({});
   const [armReset, setArmReset] = useState(false);
@@ -59,13 +65,8 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
 
   useEffect(() => {
     const handleStorageChange = () => {
-      try {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) {
-          setData(JSON.parse(saved));
-        }
-      } catch (e) {
-        console.error(e);
+      if (localStorage.getItem(STORAGE_KEY)) {
+        setData(normalize(readStored(STORAGE_KEY, DEFAULT_DATA)));
       }
     };
     window.addEventListener('storage', handleStorageChange);
@@ -75,7 +76,8 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
 
   useEffect(() => {
     if (loadedData) {
-      setData(loadedData);
+      // 예전 버전에서 저장된 세션에도 신규 필드가 없을 수 있다
+      setData(normalize(loadedData));
       if (onClearLoadedData) onClearLoadedData();
     }
   }, [loadedData]);
@@ -88,11 +90,8 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
     }
   }, [data]);
 
-  // 수치 파싱
-  const num = (v: string): number | null => {
-    const parsed = parseFloat(v.replace(/[^0-9.+-]/g, ''));
-    return isFinite(parsed) ? parsed : null;
-  };
+  // 수치 파싱 (문자열이 아닌 값이 들어와도 던지지 않는다)
+  const num = parseNum;
 
   const fmt = (v: number | null | undefined, d = 3): string => {
     if (v === null || v === undefined || !isFinite(v)) return '—';
@@ -453,26 +452,9 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
 
   const handleLoadSample = () => {
     setData({
-      mode: 'tbm',
-      tbmEl: '3.000',
-      bs: '1.100',
-      ihDirect: '',
-      pipeType: 'PP_DOUBLE',
-      secName: 'MH01 ~ MH02',
-      startInv: '-0.430',
-      endInv: '-0.190',
-      len: '75',
-      dia: '0.300',
-      thick: '0.019',
-      sand: '0.100',
-      conc: '0.100',
-      aggregate: '0.150',
-      tol: '30',
-      step: 5,
-      surveyor: '홍길동',
+      ...DEFAULT_DATA,
       mdate: new Date().toISOString().split('T')[0],
-      meas: {},
-      targetHeightMode: 'CUT_BOTTOM'
+      meas: {}
     });
     onToast('샘플 데이터를 적용했습니다');
   };
@@ -485,26 +467,18 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
     }
     setArmReset(false);
     setData({
-      mode: 'tbm',
+      ...DEFAULT_DATA,
       tbmEl: '',
       bs: '',
-      ihDirect: '',
-      pipeType: 'PP_DOUBLE',
       secName: '',
+      startMhName: '',
+      endMhName: '',
       startInv: '',
       endInv: '',
       len: '',
-      dia: '0.300',
-      thick: '0.019',
-      sand: '0.100',
-      conc: '0.100',
-      aggregate: '0.150',
-      tol: '30',
-      step: 5,
       surveyor: '',
       mdate: new Date().toISOString().split('T')[0],
-      meas: {},
-      targetHeightMode: 'CUT_BOTTOM'
+      meas: {}
     });
     onToast('초기화되었습니다');
   };
@@ -1182,14 +1156,16 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
           </em>
         </div>
 
+        {/* 시점·종점 모두 현재 선택된 검측기준(cutEl)으로 맞춘다.
+            시점만 startCut(터파기 바닥 고정)을 쓰면 다른 모드에서 두 값의 기준이 어긋난다 */}
         <div className="stat">
-          <b>시점 터파기고</b>
-          <span>{computed.rows.length ? fmt(computed.startCut) : '—'}</span>
-          <em>관저고−기초</em>
+          <b>시점 목표고</b>
+          <span>{computed.rows.length ? fmt(computed.rows[0].cutEl) : '—'}</span>
+          <em>선택 검측기준</em>
         </div>
 
         <div className="stat">
-          <b>종점 터파기고</b>
+          <b>종점 목표고</b>
           <span>{computed.rows.length ? fmt(computed.rows[computed.rows.length - 1].cutEl) : '—'}</span>
           <em>{computed.rows.length ? `${computed.rows.length}측점 @${data.step}m` : '—'}</em>
         </div>
@@ -1218,14 +1194,16 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
           <em>시점 → 종점</em>
         </div>
 
-        <div className={`stat check ${computed.rows.length && Math.abs((computed.rows[computed.rows.length - 1].cutEl + computed.base) - computed.ei!) >= 0.0005 ? 'bad' : ''}`}>
+        {/* 검산은 검측기준과 무관하게 종점 관저고(invEl)로 되짚는다.
+            cutEl + base 는 CUT_BOTTOM 모드에서만 관저고가 되므로 다른 모드에서 항상 불일치가 났다 */}
+        <div className={`stat check ${computed.rows.length && Math.abs(computed.rows[computed.rows.length - 1].invEl - computed.ei!) >= 0.0005 ? 'bad' : ''}`}>
           <b>검산</b>
           <span>
-            {computed.rows.length ? fmt(computed.rows[computed.rows.length - 1].cutEl + computed.base) : '—'}
+            {computed.rows.length ? fmt(computed.rows[computed.rows.length - 1].invEl) : '—'}
           </span>
           <em>
             {computed.rows.length ? (
-              `입력 ${fmt(computed.ei!)} ${Math.abs((computed.rows[computed.rows.length - 1].cutEl + computed.base) - computed.ei!) < 0.0005 ? '✓' : '✗'}`
+              `입력 ${fmt(computed.ei!)} ${Math.abs(computed.rows[computed.rows.length - 1].invEl - computed.ei!) < 0.0005 ? '✓' : '✗'}`
             ) : '종점 관저고 역산'}
           </em>
         </div>
