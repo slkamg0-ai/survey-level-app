@@ -76,6 +76,21 @@ export interface TrenchSurveyData {
   gpsDistanceM?: number;
   targetHeightMode?: TargetHeightMode; // 하이브리드 검측 높이 모드
   customOffsetM?: string;             // 검측용 사용자 지정 오프셋 (m)
+  specConfirmedSignature?: string;    // 확정 당시의 기초 제원 지문
+  specConfirmedAt?: string;           // 기초 제원 확정 시각 (ISO)
+}
+
+/**
+ * 기초 제원 지문.
+ * 층 두께가 하나라도 바뀌면 값이 달라져 "미확정" 상태로 되돌아간다.
+ * 현장이 바뀌었는데 이전 현장의 기초 두께로 그대로 측량하는 사고를 막는 장치다.
+ */
+export function foundationSignature(d: {
+  thick?: string; sand?: string; conc?: string; aggregate?: string; mhBase?: string; dia?: string;
+}): string {
+  return [d.dia, d.thick, d.sand, d.conc, d.aggregate, d.mhBase]
+    .map(v => (v === undefined || v === null ? '' : String(v).trim()))
+    .join('|');
 }
 
 export interface SavedJobSession {

@@ -688,3 +688,137 @@ tr.detail dd { margin: 0; color: var(--ink); font-variant-numeric: tabular-nums;
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* ── 기초 층 구성 확인 게이트 (SpecGuard) ──────────── */
+.guard {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin: 0 0 12px;
+  overflow: hidden;
+}
+
+.guard-head {
+  margin: 0;
+  padding: 10px 12px;
+  font: 600 11px/1.3 var(--mono);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  border-bottom: 1px solid var(--line-2);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.guard-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 999px;
+  padding: 3px 9px;
+  font: 700 10.5px/1.4 var(--sans);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.guard-badge.ok { background: var(--ok-bg); color: var(--ok); }
+.guard-badge.bad { background: var(--cut-bg); color: var(--cut); }
+
+.layer-stack {
+  display: flex;
+  flex-direction: column-reverse;
+  padding: 10px 12px 4px;
+  gap: 2px;
+}
+
+.layer {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 10px;
+  align-items: baseline;
+  padding: 7px 9px;
+  border: 1px solid var(--line-2);
+  border-radius: 7px;
+  background: var(--surface-2);
+  font: 500 12.5px/1.3 var(--sans);
+}
+
+.layer .layer-thick,
+.layer .layer-el {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+
+.layer .layer-thick { color: var(--ink-2); min-width: 62px; text-align: right; }
+.layer .layer-el { color: var(--ink); min-width: 58px; text-align: right; font-weight: 650; }
+
+.layer.empty { opacity: .5; }
+.layer.empty .layer-thick { color: var(--ink-3); }
+
+.layer.active {
+  border-color: var(--cut);
+  background: var(--cut-bg);
+  font-weight: 750;
+  /* 두께 0인 층을 검측 중일 때가 가장 위험하므로 흐리게 두지 않는다 */
+  opacity: 1;
+}
+
+.layer.active .layer-name,
+.layer.active .layer-thick,
+.layer.active .layer-el { color: var(--cut); }
+
+.layer-legend {
+  margin: 4px 12px 10px;
+  font: 400 11px/1.55 var(--sans);
+  color: var(--ink-3);
+}
+
+.warn-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.warn-item {
+  display: flex;
+  gap: 8px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 1px solid;
+  font: 400 11.5px/1.5 var(--sans);
+}
+
+.warn-item > svg { flex: none; margin-top: 1px; }
+.warn-item > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.warn-item b { font-size: 12.5px; font-weight: 700; }
+.warn-item span { color: var(--ink-2); }
+
+.warn-item.danger { border-color: var(--cut); background: var(--cut-bg); color: var(--cut); }
+.warn-item.danger span { color: var(--cut); opacity: .88; }
+.warn-item.warn { border-color: var(--line); background: var(--surface-2); color: var(--ink); }
+
+.guard-confirm-btn {
+  display: block;
+  width: calc(100% - 24px);
+  margin: 0 12px 12px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--cut);
+  color: #fff;
+  font: 700 14px/1 var(--sans);
+  padding: 15px 12px;
+  min-height: 50px;
+  cursor: pointer;
+}
+
+.guard-confirmed {
+  margin: 0 12px 12px;
+  font: 400 11px/1.5 var(--sans);
+  color: var(--ok);
+}

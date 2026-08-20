@@ -15,7 +15,21 @@ export const MANHOLE_DB_KEY = 'survey_manhole_master_db_v1';
 export function getSavedManholes(): ManholeMasterItem[] {
   try {
     const saved = localStorage.getItem(MANHOLE_DB_KEY);
-    if (saved) return JSON.parse(saved);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // 배열이 아닌 값이 저장돼 있으면 호출부의 filter/map 에서 앱이 죽는다
+      if (Array.isArray(parsed)) {
+        return parsed
+          .filter(item => item && typeof item === 'object')
+          .map((item, i) => ({
+            id: String(item.id ?? `mh-${i + 1}`),
+            name: String(item.name ?? ''),
+            invertEl: String(item.invertEl ?? ''),
+            remarks: item.remarks === undefined ? undefined : String(item.remarks)
+          }));
+      }
+      console.error('맨홀 DB가 배열이 아닙니다. 기본값으로 대체합니다.');
+    }
   } catch (e) {
     console.error(e);
   }

@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { TrenchSurveyData, TrenchRow, PipeType, ManholePhotoGPS, matchManholeByNameOrNumber } from '../types/survey';
+import { TrenchSurveyData, TrenchRow, PipeType, ManholePhotoGPS, matchManholeByNameOrNumber, foundationSignature } from '../types/survey';
+import { buildWarnings, isSpecConfirmed } from '../utils/validation';
+import { SpecGuard, LayerRow } from './SpecGuard';
 import { PP_DOUBLE_SPECS, STORMWATER_SPECS, findPipeThickness } from '../data/pipeSpecs';
 import { Download, Copy, RefreshCw, RotateCcw, FileSpreadsheet, Check, AlertCircle, Camera, MapPin, Sparkles, Database, Search } from 'lucide-react';
 import { getSavedManholes } from './ManholeDbModal';
@@ -13,6 +15,20 @@ interface Props {
 }
 
 const STORAGE_KEY = 'survey_trench_data_v2';
+
+const MODE_LABELS: Record<string, string> = {
+  CUT_BOTTOM: '관로 터파기 바닥고',
+  AGGREGATE_TOP: '관로 골재 포설고',
+  CONCRETE_TOP: '관로 레미콘 타설고',
+  SAND_TOP: '관로 모래 포설고',
+  INVERT: '관저고',
+  CROWN: '관상단고',
+  MH_CUT: '맨홀 터파기 바닥고',
+  MH_AGGREGATE: '맨홀 골재 포설고',
+  MH_CONCRETE: '맨홀 레미콘 타설고',
+  MH_INVERT: '맨홀 내부 바닥고',
+  CUSTOM: '사용자 지정고'
+};
 
 const DEFAULT_DATA: TrenchSurveyData = {
   mode: 'tbm',
@@ -352,6 +368,57 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
 
   const computed = compute();
 
+  const mode = data.targetHeightMode || 'CUT_BOTTOM';
+  const warnings = buildWarnings(data, computed);
+  const specConfirmed = isSpecConfirmed(data);
+
+  /**
+   * 기초 층 구성. 시점 관저고를 기준으로 아래에서 위로 쌓아 보여준다.
+   * 각 층의 topEl 은 compute() 의 검측 목표고 산식과 같은 식을 쓴다.
+   */
+  const layers: LayerRow[] = (() => {
+    const ref = computed.rows.length ? computed.rows[0].invEl : null;
+    const el = (offset: number) => (ref === null ? null : ref - offset);
+    const { t, sand, conc, agg, mhBase, dia } = computed;
+
+    if (mode.startsWith('MH_')) {
+      return [
+        { key: 'mh-cut', label: '터파기 바닥', thickness: null, topEl: el(mhBase + conc + agg), active: mode === 'MH_CUT' },
+        { key: 'mh-agg', label: '골재/잡석', thickness: agg, topEl: el(mhBase + conc), active: mode === 'MH_AGGREGATE' },
+        { key: 'mh-conc', label: '콘크리트기초', thickness: conc, topEl: el(mhBase), active: mode === 'MH_CONCRETE' },
+        { key: 'mh-slab', label: '맨홀 바닥슬래브', thickness: mhBase, topEl: el(0), active: mode === 'MH_INVERT' }
+      ];
+    }
+
+    const rows: LayerRow[] = [
+      { key: 'cut', label: '터파기 바닥', thickness: null, topEl: el(t + sand + conc + agg), active: mode === 'CUT_BOTTOM' },
+      { key: 'agg', label: '골재/잡석', thickness: agg, topEl: el(t + sand + conc), active: mode === 'AGGREGATE_TOP' },
+      { key: 'conc', label: '콘크리트기초', thickness: conc, topEl: el(t + sand), active: mode === 'CONCRETE_TOP' },
+      { key: 'sand', label: '모래기초', thickness: sand, topEl: el(t), active: mode === 'SAND_TOP' },
+      { key: 'pipe', label: '관 (관저고)', thickness: t, topEl: el(0), active: mode === 'INVERT' }
+    ];
+    if (dia !== null) {
+      rows.push({
+        key: 'crown',
+        label: '관상단',
+        thickness: dia,
+        topEl: ref === null ? null : ref + dia + t,
+        active: mode === 'CROWN'
+      });
+    }
+    return rows;
+  })();
+
+  const handleConfirmSpec = () => {
+    const now = new Date();
+    setData(prev => ({
+      ...prev,
+      specConfirmedSignature: foundationSignature(prev),
+      specConfirmedAt: `${now.getMonth() + 1}/${now.getDate()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
+    }));
+    onToast('기초 제원을 확정했습니다');
+  };
+
   // 상단 헤더 업데이트
   useEffect(() => {
     const ihStr = computed.ih === null ? '—' : fmt(computed.ih);
@@ -423,6 +490,11 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
 
 
   const handleDownloadCsv = () => {
+    // \uD655\uC815\uB418\uC9C0 \uC54A\uC740 \uAE30\uCD08 \uC81C\uC6D0\uC73C\uB85C \uB9CC\uB4E0 \uC57C\uC7A5\uC774 \uC131\uACFC\uD488\uC73C\uB85C \uB098\uAC00\uB294 \uAC83\uC744 \uB9C9\uB294\uB2E4
+    if (!isSpecConfirmed(data)) {
+      onToast('\uAE30\uCD08 \uC81C\uC6D0\uC744 \uBA3C\uC800 \uD655\uC815\uD558\uC138\uC694 (\uAE30\uCD08 \uCE35 \uAD6C\uC131 \u00B7 \uD655\uC778)');
+      return;
+    }
     const csv = '\uFEFF' + buildCsv();
     const nm = (data.secName.trim() || '관로터파기야장').replace(/[\\/:*?"<>|]/g, '_');
     try {
@@ -1285,6 +1357,17 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
           </div>
         )}
       </section>
+
+      {/* 기초 층 구성 확인 게이트 + 오입력 경고 */}
+      <SpecGuard
+        warnings={warnings}
+        layers={layers}
+        mode={mode}
+        modeLabel={MODE_LABELS[mode] || '터파기 바닥고'}
+        confirmed={specConfirmed}
+        confirmedAt={data.specConfirmedAt}
+        onConfirm={handleConfirmSpec}
+      />
 
       {/* 4. 야장 실측표 */}
       <section className="card">
