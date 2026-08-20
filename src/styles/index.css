@@ -822,3 +822,74 @@ tr.detail dd { margin: 0; color: var(--ink); font-variant-numeric: tabular-nums;
   font: 400 11px/1.5 var(--sans);
   color: var(--ok);
 }
+
+/* ── 터파기 단면 그래픽 ─────────────────────────────── */
+:root {
+  --dg-ground: #DCD5C8;
+  --dg-agg: #A89583;
+  --dg-conc: #B5BCC0;
+  --dg-sand: #E4C88C;
+  --dg-pipe: #FFFFFF;
+  --dg-pipe-in: #E8EFF3;
+  --dg-outline: #4A5457;
+  --dg-leader: #A9B4B7;
+  --dg-target: #B03A2A;
+  --dg-text: #12171A;
+  --dg-text-2: #58666B;
+}
+
+:root[data-theme="dark"] {
+  --dg-ground: #2E2B25;
+  --dg-agg: #5C5046;
+  --dg-conc: #495155;
+  --dg-sand: #6E5730;
+  --dg-pipe: #1D2427;
+  --dg-pipe-in: #121a1d;
+  --dg-outline: #93A0A3;
+  --dg-leader: #4C5659;
+  --dg-target: #E8735C;
+  --dg-text: #E9EEEC;
+  --dg-text-2: #9BA9AC;
+}
+
+.diagram-wrap { padding: 12px 12px 2px; }
+
+.trench-diagram {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 340px;
+  margin: 0 auto;
+}
+
+.trench-diagram .dg-label {
+  font: 600 10.5px var(--sans);
+  fill: var(--dg-text-2);
+}
+
+.trench-diagram .dg-el {
+  font: 650 10.5px var(--mono);
+  fill: var(--dg-text);
+}
+
+.trench-diagram .dg-label.active,
+.trench-diagram .dg-el.active {
+  fill: var(--dg-target);
+  font-weight: 800;
+}
+
+.diagram-cap {
+  margin: 8px 0 0;
+  text-align: center;
+  font: 400 11.5px/1.5 var(--sans);
+  color: var(--ink-2);
+}
+
+.diagram-cap strong { color: var(--cut); }
+
+.diagram-empty {
+  padding: 24px 14px;
+  text-align: center;
+  font: 400 12px/1.5 var(--sans);
+  color: var(--ink-3);
+}

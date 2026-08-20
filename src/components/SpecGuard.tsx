@@ -2,6 +2,7 @@ import React from 'react';
 import { AlertTriangle, AlertCircle, ShieldCheck } from 'lucide-react';
 import { TargetHeightMode } from '../types/survey';
 import { SurveyWarning } from '../utils/validation';
+import { TrenchDiagram } from './TrenchDiagram';
 
 /**
  * 기초 층 구성을 항상 화면에 보여주고, 도면과 대조해 확정하게 만드는 게이트.
@@ -21,9 +22,20 @@ export interface LayerRow {
   active: boolean;
 }
 
+export interface DiagramInput {
+  invEl: number | null;
+  sand: number;
+  conc: number;
+  agg: number;
+  t: number;
+  dia: number | null;
+  mhBase: number;
+}
+
 interface Props {
   warnings: SurveyWarning[];
   layers: LayerRow[];
+  diagram: DiagramInput;
   mode: TargetHeightMode;
   modeLabel: string;
   confirmed: boolean;
@@ -32,7 +44,7 @@ interface Props {
 }
 
 export const SpecGuard: React.FC<Props> = ({
-  warnings, layers, modeLabel, confirmed, confirmedAt, onConfirm
+  warnings, layers, diagram, mode, modeLabel, confirmed, confirmedAt, onConfirm
 }) => {
   const dangers = warnings.filter(x => x.level === 'danger');
   const warns = warnings.filter(x => x.level === 'warn');
@@ -47,6 +59,14 @@ export const SpecGuard: React.FC<Props> = ({
           <span className="guard-badge bad"><AlertTriangle size={13} /> 미확정</span>
         )}
       </h2>
+
+      {/* 단면 그래픽 — 바쁠 때는 이것만 봐도 되게 */}
+      <div className="diagram-wrap">
+        <TrenchDiagram {...diagram} mode={mode} />
+        <p className="diagram-cap">
+          붉은 파선이 지금 잡는 면 — <strong>{modeLabel}</strong>
+        </p>
+      </div>
 
       {/* 아래에서 위로 쌓인 순서 그대로 */}
       <div className="layer-stack">

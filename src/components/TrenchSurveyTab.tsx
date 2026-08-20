@@ -1362,6 +1362,15 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
       <SpecGuard
         warnings={warnings}
         layers={layers}
+        diagram={{
+          invEl: computed.rows.length ? computed.rows[0].invEl : null,
+          sand: computed.sand,
+          conc: computed.conc,
+          agg: computed.agg,
+          t: computed.t,
+          dia: computed.dia,
+          mhBase: computed.mhBase
+        }}
         mode={mode}
         modeLabel={MODE_LABELS[mode] || '터파기 바닥고'}
         confirmed={specConfirmed}

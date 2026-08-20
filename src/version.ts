@@ -1,3 +1,3 @@
-export const APP_VERSION = 'v2.10.0';
+export const APP_VERSION = 'v2.11.0';
 export const APP_BUILD_DATE = '2026-08-21';
-export const APP_CHANGELOG = '기초 층 구성 상시 표시 및 제원 확정 게이트 도입, 오입력 경고 시스템(11종) 추가, 맨홀 DB 손상값 방어';
+export const APP_CHANGELOG = '터파기 단면 층구성 그래픽 추가 — 검측 대상면을 단면도 위에 붉은 파선으로 표시';
