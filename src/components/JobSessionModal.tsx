@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { SavedJobSession, TrenchSurveyData, StandardSurveyData } from '../types/survey';
-import { Save, FolderOpen, Trash2, X, Plus, Clock, Check, HardHat } from 'lucide-react';
+import { Save, FolderOpen, Trash2, X, Plus, Clock, Check, HardHat, Download, Upload, ShieldCheck } from 'lucide-react';
+import { buildBackup, parseBackup, applyBackup, summarize, RestoreMode } from '../utils/backup';
 
 interface Props {
   isOpen: boolean;
@@ -90,6 +91,57 @@ export const JobSessionModal: React.FC<Props> = ({
     onToast(`삭제되었습니다: ${name}`);
   };
 
+  /* ── 전체 백업 ───────────────────────────────── */
+  const handleExportBackup = () => {
+    const backup = buildBackup();
+    const text = JSON.stringify(backup, null, 2);
+    const stamp = new Date().toISOString().slice(0, 10);
+    const name = `측량야장_백업_${stamp}.json`;
+
+    try {
+      const blob = new Blob([text], { type: 'application/json;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      onToast(`💾 백업 저장 — ${summarize(backup)}`);
+    } catch {
+      // APK 내 WebView 처럼 다운로드가 막힌 환경에서는 클립보드로 뺀다
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          () => onToast('저장이 막혀 백업을 클립보드에 복사했습니다'),
+          () => onToast('백업을 내보내지 못했습니다')
+        );
+      } else {
+        onToast('백업을 내보내지 못했습니다');
+      }
+    }
+  };
+
+  const handleRestoreBackup = (file: File, mode: RestoreMode) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const content = e.target?.result as string;
+      const backup = content ? parseBackup(content) : null;
+      if (!backup) {
+        onToast('이 앱의 백업 파일이 아닙니다');
+        return;
+      }
+      const res = applyBackup(backup, mode);
+      if (res.restored.length === 0) {
+        onToast('되돌릴 내용이 없습니다');
+        return;
+      }
+      setSessions(getSavedSessions());
+      onToast(`복원 완료 — ${summarize(backup)}. ${res.note}`);
+    };
+    reader.readAsText(file, 'UTF-8');
+  };
+
   const handleImportSessionFile = (file: File) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -175,6 +227,58 @@ export const JobSessionModal: React.FC<Props> = ({
 
         {/* 바디 내용 */}
         <div style={{ padding: '14px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {/* 전체 백업 — 이 앱 데이터는 폰 내부에만 있어 지우면 복구 수단이 없다 */}
+          <div className="backup-box">
+            <div className="backup-head">
+              <b><ShieldCheck size={14} /> 전체 백업</b>
+              <span>맨홀DB · 노선 · 저장한 작업 · 현재 야장</span>
+            </div>
+
+            <p className="backup-note">
+              이 앱의 데이터는 폰 안에만 있습니다. 사이트 데이터를 지우거나 앱을 삭제하면
+              한꺼번에 사라지고 되돌릴 방법이 없습니다. 파일로 빼두면 다른 폰으로 옮길 수도 있습니다.
+            </p>
+
+            <div className="backup-actions">
+              <button type="button" className="btn primary" onClick={handleExportBackup}>
+                <Download size={15} /> 백업 파일로 저장
+              </button>
+
+              <label className="btn">
+                <Upload size={15} /> 합치기
+                <input
+                  type="file"
+                  accept=".json"
+                  style={{ display: 'none' }}
+                  onChange={e => {
+                    const f = e.target.files?.[0];
+                    if (f) handleRestoreBackup(f, 'merge');
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+
+              <label className="btn danger-outline">
+                <Upload size={15} /> 덮어쓰기
+                <input
+                  type="file"
+                  accept=".json"
+                  style={{ display: 'none' }}
+                  onChange={e => {
+                    const f = e.target.files?.[0];
+                    if (f) handleRestoreBackup(f, 'replace');
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+            </div>
+
+            <p className="backup-hint">
+              <b>합치기</b>는 지금 있는 것을 그대로 두고 없는 항목만 더합니다.
+              <b>덮어쓰기</b>는 현재 야장까지 백업 시점으로 되돌립니다.
+            </p>
+          </div>
+
           {/* 현재 작업 저장 섹션 */}
           <div style={{ background: 'var(--surface-2)', padding: '12px', borderRadius: '10px', border: '1px solid var(--line)' }}>
             <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--ink-2)', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
