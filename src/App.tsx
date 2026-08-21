@@ -6,6 +6,7 @@ import { StandardLevelTab } from './components/StandardLevelTab';
 import { JobSessionModal } from './components/JobSessionModal';
 import { ManholeDbModal, getSavedManholes } from './components/ManholeDbModal';
 import { RouteModal } from './components/RouteModal';
+import { NearbyModal } from './components/NearbyModal';
 import { loadRoutes, buildSpans } from './utils/routes';
 import { TrenchSurveyData, StandardSurveyData } from './types/survey';
 import './styles/index.css';
@@ -32,6 +33,7 @@ export function App() {
   const [isJobsModalOpen, setIsJobsModalOpen] = useState(false);
   const [isMhDbModalOpen, setIsMhDbModalOpen] = useState(false);
   const [isRouteModalOpen, setIsRouteModalOpen] = useState(false);
+  const [isNearbyModalOpen, setIsNearbyModalOpen] = useState(false);
 
   // 로드 콜백 트리거
   const [loadedTrenchData, setLoadedTrenchData] = useState<TrenchSurveyData | null>(null);
@@ -69,6 +71,7 @@ export function App() {
         onOpenJobs={() => setIsJobsModalOpen(true)}
         onOpenMhDb={() => setIsMhDbModalOpen(true)}
         onOpenRoutes={() => setIsRouteModalOpen(true)}
+        onOpenNearby={() => setIsNearbyModalOpen(true)}
       />
 
       {activeTab === 'trench' ? (
@@ -151,6 +154,27 @@ export function App() {
             endInv: span.end.invertEl,
             len: span.length !== null ? span.length.toFixed(2) : (current.len || '')
           };
+          localStorage.setItem('survey_trench_data_v2', JSON.stringify(updated));
+          setActiveTab('trench');
+          setLoadedTrenchData(updated);
+        }}
+      />
+
+      {/* 내 위치 근처 맨홀 */}
+      <NearbyModal
+        isOpen={isNearbyModalOpen}
+        onClose={() => setIsNearbyModalOpen(false)}
+        onToast={showToast}
+        onPick={(type, item) => {
+          const current = readJson('survey_trench_data_v2');
+          const updated = {
+            ...current,
+            startMhName: type === 'start' ? item.name : (current.startMhName || ''),
+            startInv: type === 'start' ? item.invertEl : (current.startInv || ''),
+            endMhName: type === 'end' ? item.name : (current.endMhName || ''),
+            endInv: type === 'end' ? item.invertEl : (current.endInv || ''),
+          };
+          updated.secName = `${updated.startMhName || '시점'} ~ ${updated.endMhName || '종점'}`;
           localStorage.setItem('survey_trench_data_v2', JSON.stringify(updated));
           setActiveTab('trench');
           setLoadedTrenchData(updated);

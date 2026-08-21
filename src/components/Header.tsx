@@ -11,9 +11,10 @@ interface HeaderProps {
   onOpenJobs?: () => void;
   onOpenMhDb?: () => void;
   onOpenRoutes?: () => void;
+  onOpenNearby?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ secName, ihVal, ihSub, theme, onToggleTheme, onOpenJobs, onOpenMhDb, onOpenRoutes }) => {
+export const Header: React.FC<HeaderProps> = ({ secName, ihVal, ihSub, theme, onToggleTheme, onOpenJobs, onOpenMhDb, onOpenRoutes, onOpenNearby }) => {
   return (
     <>
       <header className="topbar">
@@ -37,68 +38,30 @@ export const Header: React.FC<HeaderProps> = ({ secName, ihVal, ihSub, theme, on
             </div>
 
             {onOpenMhDb && (
-              <button
-                onClick={onOpenMhDb}
-                style={{
-                  background: 'var(--surface-2)',
-                  border: '1px solid var(--line)',
-                  borderRadius: '8px',
-                  padding: '6px 8px',
-                  color: 'var(--ink)',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  fontSize: '11px',
-                  fontWeight: 600
-                }}
-                title="맨홀 CAD 관저고 DB"
-              >
-                🕳️ 맨홀DB
+              <button className="topbtn" onClick={onOpenMhDb} title="맨홀 CAD 관저고 DB">
+                <span className="topbtn-ico">🕳️</span>
+                <span className="topbtn-label">맨홀DB</span>
+              </button>
+            )}
+
+            {onOpenNearby && (
+              <button className="topbtn" onClick={onOpenNearby} title="내 위치 근처 맨홀">
+                <span className="topbtn-ico">📍</span>
+                <span className="topbtn-label">위치</span>
               </button>
             )}
 
             {onOpenRoutes && (
-              <button
-                onClick={onOpenRoutes}
-                style={{
-                  background: 'var(--surface-2)',
-                  border: '1px solid var(--line)',
-                  borderRadius: '8px',
-                  padding: '6px 8px',
-                  color: 'var(--ink)',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  fontSize: '11px',
-                  fontWeight: 600
-                }}
-                title="노선 · 다구간 측량"
-              >
-                🛣️ 노선
+              <button className="topbtn" onClick={onOpenRoutes} title="노선 · 다구간 측량">
+                <span className="topbtn-ico">🛣️</span>
+                <span className="topbtn-label">노선</span>
               </button>
             )}
 
             {onOpenJobs && (
-              <button
-                onClick={onOpenJobs}
-                style={{
-                  background: 'var(--surface-2)',
-                  border: '1px solid var(--line)',
-                  borderRadius: '8px',
-                  padding: '6px 8px',
-                  color: 'var(--ink)',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  fontSize: '11px',
-                  fontWeight: 600
-                }}
-                title="작업 목록"
-              >
-                📂 작업
+              <button className="topbtn" onClick={onOpenJobs} title="작업 목록">
+                <span className="topbtn-ico">📂</span>
+                <span className="topbtn-label">작업</span>
               </button>
             )}
 
