@@ -7,8 +7,8 @@ import { JobSessionModal } from './components/JobSessionModal';
 import { ManholeDbModal, getSavedManholes } from './components/ManholeDbModal';
 import { RouteModal } from './components/RouteModal';
 import { NearbyModal } from './components/NearbyModal';
-import { loadRoutes, buildSpans } from './utils/routes';
-import { TrenchSurveyData, StandardSurveyData } from './types/survey';
+import { loadRoutes, buildSpans, applyManholePick, describeLengthGap } from './utils/routes';
+import { TrenchSurveyData, StandardSurveyData, ManholeMasterItem } from './types/survey';
 import './styles/index.css';
 
 /** 손상된 저장값이 있어도 렌더가 죽지 않도록 감싼 읽기 */
@@ -52,6 +52,26 @@ export function App() {
 
   const toggleTheme = () => {
     setTheme(prev => (prev === 'dark' ? 'light' : 'dark'));
+  };
+
+  /**
+   * 맨홀을 시점/종점으로 넣는다. 연장은 두 맨홀 좌표로 계산해 함께 채우고,
+   * 좌표가 없으면 비워서 이전 구간 값이 남아 조용히 틀리는 일을 막는다.
+   */
+  const pickManhole = (type: 'start' | 'end', item: ManholeMasterItem) => {
+    const current = readJson('survey_trench_data_v2');
+    const updated = applyManholePick(current, type, item, getSavedManholes());
+    localStorage.setItem('survey_trench_data_v2', JSON.stringify(updated));
+    setLoadedTrenchData(updated as TrenchSurveyData);
+
+    // 연장이 왜 안 나오는지 어느 쪽 때문인지까지 짚어준다
+    const gap = describeLengthGap(updated.startMhName, updated.endMhName, getSavedManholes());
+    showToast(
+      updated.len
+        ? `${item.name} 적용 · 연장 ${updated.len}m (좌표 계산)`
+        : `${item.name} 적용 · 연장 계산 불가 — ${gap}`
+    );
+    return updated;
   };
 
   const handleUpdateHeader = (name: string, ih: string, sub: string) => {
@@ -117,17 +137,7 @@ export function App() {
         onToast={showToast}
         onSelectManhole={(type, item) => {
           setActiveTab('trench');
-          const currentTrench = readJson('survey_trench_data_v2');
-          const updated = {
-            ...currentTrench,
-            startMhName: type === 'start' ? item.name : (currentTrench.startMhName || 'MH01'),
-            startInv: type === 'start' ? item.invertEl : (currentTrench.startInv || '-0.430'),
-            endMhName: type === 'end' ? item.name : (currentTrench.endMhName || 'MH02'),
-            endInv: type === 'end' ? item.invertEl : (currentTrench.endInv || '-0.190'),
-          };
-          updated.secName = `${updated.startMhName || '시점'} ~ ${updated.endMhName || '종점'}`;
-          localStorage.setItem('survey_trench_data_v2', JSON.stringify(updated));
-          setLoadedTrenchData(updated);
+          pickManhole(type, item);
         }}
       />
 
@@ -166,18 +176,8 @@ export function App() {
         onClose={() => setIsNearbyModalOpen(false)}
         onToast={showToast}
         onPick={(type, item) => {
-          const current = readJson('survey_trench_data_v2');
-          const updated = {
-            ...current,
-            startMhName: type === 'start' ? item.name : (current.startMhName || ''),
-            startInv: type === 'start' ? item.invertEl : (current.startInv || ''),
-            endMhName: type === 'end' ? item.name : (current.endMhName || ''),
-            endInv: type === 'end' ? item.invertEl : (current.endInv || ''),
-          };
-          updated.secName = `${updated.startMhName || '시점'} ~ ${updated.endMhName || '종점'}`;
-          localStorage.setItem('survey_trench_data_v2', JSON.stringify(updated));
           setActiveTab('trench');
-          setLoadedTrenchData(updated);
+          pickManhole(type, item);
         }}
       />
 

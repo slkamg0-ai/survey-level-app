@@ -124,8 +124,8 @@ export const NearbyModal: React.FC<Props> = ({ isOpen, onClose, onToast, onPick 
                         </span>
                       </div>
                       <div className="near-actions">
-                        <button type="button" onClick={() => { onPick('start', item); onToast(`${item.name} → 시점`); onClose(); }}>시점</button>
-                        <button type="button" onClick={() => { onPick('end', item); onToast(`${item.name} → 종점`); onClose(); }}>종점</button>
+                        <button type="button" onClick={() => { onPick('start', item); onClose(); }}>시점</button>
+                        <button type="button" onClick={() => { onPick('end', item); onClose(); }}>종점</button>
                       </div>
                     </div>
                   ))}

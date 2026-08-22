@@ -31,6 +31,8 @@ export interface ComputedLike {
   mhBase: number;
   drop: number;
   rows: { invEl: number }[];
+  /** 시·종점 맨홀 좌표로 계산한 연장 (좌표가 없으면 null) */
+  coordLength?: number | null;
 }
 
 /** 검측 모드가 어느 층의 두께에 의존하는지 */
@@ -167,8 +169,32 @@ export function buildWarnings(data: TrenchSurveyData, c: ComputedLike): SurveyWa
     }
   }
 
+  // 8-1. 입력된 연장이 맨홀 좌표 거리와 다른 경우.
+  //      맨홀만 바꾸고 연장이 이전 구간 값으로 남으면 화면에 숫자가 떠 있어
+  //      맞는 값처럼 보이는 채로 전 측점의 목표고가 틀어진다.
+  if (c.coordLength !== null && c.coordLength !== undefined && c.L !== null && c.L > 0) {
+    const gap = c.L - c.coordLength;
+    if (Math.abs(gap) > 0.5) {
+      w.push({
+        id: 'len-vs-coord',
+        level: 'danger',
+        title: `연장이 맨홀 좌표 거리와 ${Math.abs(gap).toFixed(2)} m 다릅니다`,
+        detail: `입력된 연장 ${c.L.toFixed(2)} m, 두 맨홀 좌표 거리 ${c.coordLength.toFixed(2)} m. 다른 구간의 연장이 남아 있지 않은지 확인하세요.`
+      });
+    }
+  }
+
   // 9. 연장 이상
-  if (c.L !== null && c.L > 0) {
+  if (c.L === null || c.L <= 0) {
+    w.push({
+      id: 'len-missing',
+      level: 'danger',
+      title: '연장이 입력되지 않았습니다',
+      detail: c.coordLength !== null && c.coordLength !== undefined
+        ? `맨홀 좌표로는 ${c.coordLength.toFixed(2)} m입니다. 연장칸에 넣으세요.`
+        : '시·종점 맨홀에 좌표가 없어 자동 계산되지 않습니다. 도면 연장을 직접 넣으세요.'
+    });
+  } else {
     if (c.L > 500) {
       w.push({
         id: 'len-long',

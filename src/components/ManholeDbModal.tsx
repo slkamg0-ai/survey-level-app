@@ -265,8 +265,12 @@ export const ManholeDbModal: React.FC<Props> = ({
 
   const handleApplyToSurvey = (type: 'start' | 'end', item: ManholeMasterItem) => {
     if (onSelectManhole) {
+      // 연장이 함께 정해지므로 안내는 호출한 쪽이 띄운다.
+      // 여기서 또 띄우면 연장 정보를 담은 메시지를 덮어쓴다.
       onSelectManhole(type, item);
-    } else {
+      return;
+    }
+    {
       try {
         const saved = localStorage.getItem('survey_trench_data_v2');
         const data = saved ? JSON.parse(saved) : {};

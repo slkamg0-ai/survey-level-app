@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { TrenchSurveyData, TrenchRow, PipeType, ManholePhotoGPS, matchManholeByNameOrNumber, foundationSignature } from '../types/survey';
 import { buildWarnings, isSpecConfirmed } from '../utils/validation';
 import { SpecGuard, LayerRow } from './SpecGuard';
-import { loadRoutes, buildSpans } from '../utils/routes';
+import { loadRoutes, buildSpans, findManholeByName, coordDistanceBetween } from '../utils/routes';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { PP_DOUBLE_SPECS, STORMWATER_SPECS, findPipeThickness } from '../data/pipeSpecs';
 import { Download, Copy, RefreshCw, RotateCcw, FileSpreadsheet, Check, AlertCircle, Camera, MapPin, Sparkles, Database, Search } from 'lucide-react';
@@ -402,7 +402,16 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
   const computed = compute();
 
   const mode = data.targetHeightMode || 'CUT_BOTTOM';
-  const warnings = buildWarnings(data, computed);
+  // 시·종점 맨홀 좌표로 계산한 연장 — 입력된 연장과 대조해 경고한다
+  const coordLength = React.useMemo(() => {
+    const all = getSavedManholes();
+    return coordDistanceBetween(
+      findManholeByName(all, data.startMhName),
+      findManholeByName(all, data.endMhName)
+    );
+  }, [data.startMhName, data.endMhName]);
+
+  const warnings = buildWarnings(data, { ...computed, coordLength });
   const specConfirmed = isSpecConfirmed(data);
 
   /**
