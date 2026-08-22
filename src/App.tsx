@@ -7,7 +7,7 @@ import { JobSessionModal } from './components/JobSessionModal';
 import { ManholeDbModal, getSavedManholes } from './components/ManholeDbModal';
 import { RouteModal } from './components/RouteModal';
 import { NearbyModal } from './components/NearbyModal';
-import { loadRoutes, buildSpans, applyManholePick, describeLengthGap } from './utils/routes';
+import { loadRoutes, buildSpans, applyManholePick, describeLengthGap, reconcileRouteContext } from './utils/routes';
 import { TrenchSurveyData, StandardSurveyData, ManholeMasterItem } from './types/survey';
 import './styles/index.css';
 
@@ -59,13 +59,19 @@ export function App() {
    * 좌표가 없으면 비워서 이전 구간 값이 남아 조용히 틀리는 일을 막는다.
    */
   const pickManhole = (type: 'start' | 'end', item: ManholeMasterItem) => {
+    const all = getSavedManholes();
     const current = readJson('survey_trench_data_v2');
-    const updated = applyManholePick(current, type, item, getSavedManholes());
+    // 노선 구간 문맥이 실제 시·종점과 어긋난 채 남지 않게 맞춘다
+    const updated = reconcileRouteContext(
+      applyManholePick(current, type, item, all),
+      loadRoutes(),
+      all
+    );
     localStorage.setItem('survey_trench_data_v2', JSON.stringify(updated));
     setLoadedTrenchData(updated as TrenchSurveyData);
 
     // 연장이 왜 안 나오는지 어느 쪽 때문인지까지 짚어준다
-    const gap = describeLengthGap(updated.startMhName, updated.endMhName, getSavedManholes());
+    const gap = describeLengthGap(updated.startMhName, updated.endMhName, all);
     showToast(
       updated.len
         ? `${item.name} 적용 · 연장 ${updated.len}m (좌표 계산)`

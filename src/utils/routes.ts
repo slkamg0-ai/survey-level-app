@@ -126,6 +126,35 @@ export function applyManholePick<T extends {
 }
 
 /**
+ * 노선 구간 문맥을 실제 시·종점과 맞춘다.
+ *
+ * 노선 측량 중에 맨홀을 따로 고르면 야장은 바뀌는데 routeId/spanIndex 는 그대로 남는다.
+ * 그러면 구간 네비게이터가 실제와 다른 구간을 가리키고, 실측값도 그 구간 기록으로
+ * 저장돼 나중에 진짜 그 구간을 열었을 때 엉뚱한 값이 들어 있게 된다.
+ * 지금 쌍이 노선의 어느 구간과 같으면 그 번호로 맞추고, 아니면 노선에서 벗어난 것으로 본다.
+ */
+export function reconcileRouteContext<T extends {
+  routeId?: string; spanIndex?: number; startMhName?: string; endMhName?: string;
+}>(data: T, routes: SurveyRoute[], manholes: ManholeMasterItem[]): T {
+  if (!data.routeId) return data;
+
+  const route = routes.find(r => r.id === data.routeId) || null;
+  const spans = buildSpans(route, manholes);
+  const same = (a?: string, b?: string) =>
+    (a || '').trim().toUpperCase() === (b || '').trim().toUpperCase();
+
+  const idx = spans.findIndex(
+    sp => same(sp.start.name, data.startMhName) && same(sp.end.name, data.endMhName)
+  );
+
+  if (idx >= 0) return { ...data, spanIndex: idx };
+  const next = { ...data };
+  delete next.routeId;
+  delete next.spanIndex;
+  return next;
+}
+
+/**
  * 연장이 자동 계산되지 않는 이유를 짚는다.
  * 어느 쪽이 문제인지 정확히 지목해야 손을 쓸 수 있으므로 양쪽을 각각 본다.
  */
