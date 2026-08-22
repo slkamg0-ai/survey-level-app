@@ -125,6 +125,64 @@ export function applyManholePick<T extends {
   return { ...next, len: d !== null ? d.toFixed(2) : '' };
 }
 
+export interface RouteImportResult {
+  routes: SurveyRoute[];
+  missingNames: string[];
+  dropped: number;
+}
+
+/**
+ * 노선 파일 가져오기.
+ *
+ * 종단면도는 각 노선을 이어진 순서대로 그리므로 거기서 뽑은 맨홀 순서를 그대로 받는다.
+ * 특히 우수는 이름 연번이 노선 순서가 아니라 손으로 담으면 엉뚱한 구간이 만들어진다.
+ *
+ * 형식: { "routes": [ { "name": "...", "manholes": ["M1-45","M1-46", ...] } ] }
+ * 맨홀은 이름으로 맨홀DB와 맞춘다. DB에 없는 이름은 건너뛰고 몇 개인지 알려준다.
+ */
+export function parseRouteImport(
+  text: string,
+  manholes: ManholeMasterItem[]
+): RouteImportResult | null {
+  let parsed: any;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  const list = Array.isArray(parsed) ? parsed : parsed && parsed.routes;
+  if (!Array.isArray(list)) return null;
+
+  const missing = new Set<string>();
+  const routes: SurveyRoute[] = [];
+  let dropped = 0;
+  const now = new Date();
+  const stamp = `${now.getMonth() + 1}/${now.getDate()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+  list.forEach((r: any, i: number) => {
+    const names: string[] = Array.isArray(r && r.manholes) ? r.manholes.map((v: any) => String(v)) : [];
+    const ids: string[] = [];
+    names.forEach(n => {
+      const item = findManholeByName(manholes, n);
+      if (item) ids.push(item.id);
+      else missing.add(n.trim().toUpperCase());
+    });
+    // 맨홀이 둘 미만이면 구간이 안 나온다
+    if (ids.length < 2) {
+      dropped++;
+      return;
+    }
+    routes.push({
+      id: `route_${now.getTime()}_${i}`,
+      name: String((r && r.name) || `노선 ${i + 1}`),
+      manholeIds: ids,
+      updatedAt: stamp
+    });
+  });
+
+  return { routes, missingNames: Array.from(missing), dropped };
+}
+
 /**
  * 노선 구간 문맥을 실제 시·종점과 맞춘다.
  *

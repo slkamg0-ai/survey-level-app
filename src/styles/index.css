@@ -1227,3 +1227,14 @@ tr.detail dd { margin: 0; color: var(--ink); font-variant-numeric: tabular-nums;
 }
 
 .backup-hint b { color: var(--ink-2); font-weight: 700; }
+
+.route-import {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  margin: 0;
+  cursor: pointer;
+  font: 600 13px var(--sans);
+}

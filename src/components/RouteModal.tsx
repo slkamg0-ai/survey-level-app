@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { X, Plus, Trash2, ArrowUp, ArrowDown, Route as RouteIcon, Play } from 'lucide-react';
+import { X, Plus, Trash2, ArrowUp, ArrowDown, Route as RouteIcon, Play, Upload } from 'lucide-react';
 import { ManholeMasterItem, SurveyRoute } from '../types/survey';
-import { loadRoutes, saveRoutes, buildSpans, lengthDiscrepancy } from '../utils/routes';
+import { loadRoutes, saveRoutes, buildSpans, lengthDiscrepancy, parseRouteImport } from '../utils/routes';
 import { getSavedManholes } from './ManholeDbModal';
 
 /**
@@ -40,6 +40,37 @@ export const RouteModal: React.FC<Props> = ({ isOpen, onClose, onToast, onStartS
   const touch = (r: SurveyRoute): SurveyRoute => {
     const now = new Date();
     return { ...r, updatedAt: `${now.getMonth() + 1}/${now.getDate()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}` };
+  };
+
+  const handleImport = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const content = e.target?.result as string;
+      const res = content ? parseRouteImport(content, manholes) : null;
+      if (!res) {
+        onToast('노선 파일 형식이 아닙니다 (routes 목록이 있는 JSON)');
+        return;
+      }
+      if (res.routes.length === 0) {
+        onToast(
+          res.missingNames.length
+            ? `맨홀DB에 없는 이름뿐입니다 (${res.missingNames.length}종). 맨홀DB를 먼저 올리세요`
+            : '가져올 노선이 없습니다'
+        );
+        return;
+      }
+      // 같은 이름은 덮어쓰지 않고 건너뛴다
+      const existing = new Set(routes.map(r => r.name));
+      const add = res.routes.filter(r => !existing.has(r.name));
+      persist([...add, ...routes]);
+
+      const notes = [`노선 ${add.length}개 추가`];
+      if (res.routes.length - add.length > 0) notes.push(`이름 중복 ${res.routes.length - add.length}개 건너뜀`);
+      if (res.dropped > 0) notes.push(`맨홀 부족 ${res.dropped}개 제외`);
+      if (res.missingNames.length) notes.push(`DB에 없는 맨홀 ${res.missingNames.length}종`);
+      onToast(notes.join(' · '));
+    };
+    reader.readAsText(file, 'UTF-8');
   };
 
   const handleCreate = () => {
@@ -109,6 +140,21 @@ export const RouteModal: React.FC<Props> = ({ isOpen, onClose, onToast, onStartS
                   <Plus size={15} /> 만들기
                 </button>
               </div>
+
+              {/* 종단면도에서 뽑은 노선 순서를 그대로 받는다 */}
+              <label className="btn route-import">
+                <Upload size={15} /> 노선 파일 불러오기 (.json)
+                <input
+                  type="file"
+                  accept=".json"
+                  style={{ display: 'none' }}
+                  onChange={e => {
+                    const f = e.target.files?.[0];
+                    if (f) handleImport(f);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
 
               {routes.length === 0 ? (
                 <p className="route-empty">
