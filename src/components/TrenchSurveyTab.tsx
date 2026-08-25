@@ -411,6 +411,27 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
     );
   }, [data.startMhName, data.endMhName]);
 
+  /** 도면 연장표에 적힌 값 (시점 맨홀의 '다음까지 거리') */
+  const sheetLength = React.useMemo(() => {
+    const start = findManholeByName(getSavedManholes(), data.startMhName);
+    return start ? parseNum(start.distToNext) : null;
+  }, [data.startMhName]);
+
+  /** 입력 연장을 대조할 수 있는 값과 비교한다. 대조 자료가 없으면 ✓ 를 띄우지 않는다 */
+  const lenCheck = (() => {
+    const L = computed.L;
+    const ref = coordLength !== null ? coordLength : sheetLength;
+    const src = coordLength !== null ? '좌표' : '도면';
+    if (L === null || L <= 0) return { state: 'none', value: '—', note: '연장 미입력' };
+    if (ref === null) return { state: 'none', value: fmt(L, 2), note: '대조 자료 없음 (좌표·도면 연장 없음)' };
+    const diff = L - ref;
+    return {
+      state: Math.abs(diff) <= 0.5 ? 'ok' : 'bad',
+      value: `${fmt(ref, 2)} m`,
+      note: `${src} 대비 ${diff >= 0 ? '+' : ''}${diff.toFixed(2)} m ${Math.abs(diff) <= 0.5 ? '✓' : '✗'}`
+    };
+  })();
+
   const warnings = buildWarnings(data, { ...computed, coordLength });
   const specConfirmed = isSpecConfirmed(data);
 
@@ -549,7 +570,8 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
       const devFormula = `=IF(OR(ISBLANK(F${rNum}), ISBLANK(E${rNum})), "", ROUND((F${rNum} - E${rNum}) * 100, 1))`;
 
       // H열 (판정): ABS((F - E) * 1000) <= 허용오차 H4 이면 적정, F > E 더파기, 아니면 되메움
-      const jdFormula = `=IF(OR(ISBLANK(F${rNum}), ISBLANK(E${rNum})), "", IF(ABS((F${rNum} - E${rNum}) * 1000) <= $H$4, "적정", IF(F${rNum} > E${rNum}, "더파기", "되메움")))`;
+      // ROUND 를 씌워야 허용오차와 정확히 같은 값이 부동소수점 오차로 부적합이 되지 않는다
+      const jdFormula = `=IF(OR(ISBLANK(F${rNum}), ISBLANK(E${rNum})), "", IF(ROUND(ABS((F${rNum} - E${rNum}) * 1000), 6) <= $H$4, "적정", IF(F${rNum} > E${rNum}, "더파기", "되메움")))`;
 
       const label = isMhCsv
         ? (r.node === 'start' ? (data.startMhName || '시점 MH') : (data.endMhName || '종점 MH'))
@@ -1351,18 +1373,14 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
           <em>시점 → 종점</em>
         </div>
 
-        {/* 검산은 검측기준과 무관하게 종점 관저고(invEl)로 되짚는다.
-            cutEl + base 는 CUT_BOTTOM 모드에서만 관저고가 되므로 다른 모드에서 항상 불일치가 났다 */}
-        <div className={`stat check ${computed.rows.length && Math.abs(computed.rows[computed.rows.length - 1].invEl - computed.ei!) >= 0.0005 ? 'bad' : ''}`}>
-          <b>검산</b>
-          <span>
-            {computed.rows.length ? fmt(computed.rows[computed.rows.length - 1].invEl) : '—'}
-          </span>
-          <em>
-            {computed.rows.length ? (
-              `입력 ${fmt(computed.ei!)} ${Math.abs(computed.rows[computed.rows.length - 1].invEl - computed.ei!) < 0.0005 ? '✓' : '✗'}`
-            ) : '종점 관저고 역산'}
-          </em>
+        {/* 연장 검증 — 입력 연장을 맨홀 좌표 거리 또는 도면 연장과 대조한다.
+            예전의 '검산'은 종점 관저고를 역산해 보여줬는데,
+            그 값은 시점·종점·연장으로 만든 결과라 입력값과 항상 같아지는 항등식이었다.
+            종점에 99.999 를 넣어도 ✓ 가 떠서 검증된 것처럼 보였다. */}
+        <div className={`stat check ${lenCheck.state === 'bad' ? 'bad' : ''}`}>
+          <b>연장 검증</b>
+          <span>{lenCheck.value}</span>
+          <em>{lenCheck.note}</em>
         </div>
       </section>
 
@@ -1566,7 +1584,9 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
                 if (rawMeas && isFinite(measVal) && r.target !== null) {
                   const devM = measVal - r.target;
                   const cm = Math.abs(devM) * 100;
-                  if (Math.abs(devM) <= computed.tol) {
+                  // 허용오차와 정확히 같은 값이 부동소수점 오차로 부적합이 되지 않게 한다
+                  // (4.929 - 4.899 = 0.03000000000000025 > 0.03)
+                  if (Math.abs(devM) <= computed.tol + 1e-9) {
                     judgeClass = 'judge ok';
                     judgeContent = <>적정 <small>{cm.toFixed(1)}</small></>;
                   } else if (devM < 0) {

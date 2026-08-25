@@ -136,18 +136,11 @@ export function buildWarnings(data: TrenchSurveyData, c: ComputedLike): SurveyWa
     });
   }
 
-  // 7. 종점 관저고 역산 검산 불일치
-  if (c.rows.length && c.ei !== null) {
-    const back = c.rows[c.rows.length - 1].invEl;
-    if (Math.abs(back - c.ei) >= 0.0005) {
-      w.push({
-        id: 'check-mismatch',
-        level: 'danger',
-        title: '검산이 맞지 않습니다',
-        detail: `종점 관저고 역산값 ${back.toFixed(3)} 이 입력값 ${c.ei.toFixed(3)} 과 다릅니다. 시점·종점 관저고와 연장을 다시 확인하세요.`
-      });
-    }
-  }
+  // 7. (삭제) 종점 관저고 역산 검산
+  //
+  // invEl(L) = si − ((si−ei)/L)·L = ei 라 항상 일치하는 항등식이었다.
+  // 종점에 99.999 를 넣어도 ✓ 가 떠서 검증된 것처럼 보였을 뿐, 아무것도 걸러내지 못했다.
+  // 실제 대조가 가능한 것은 연장(좌표 거리·도면 연장)뿐이라 8-1 규칙으로 대체했다.
 
   // 8. 구배 이상
   if (c.L !== null && c.L > 0 && c.si !== null && c.ei !== null) {
