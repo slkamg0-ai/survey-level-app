@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { TrenchSurveyData, TrenchRow, PipeType, ManholePhotoGPS, matchManholeByNameOrNumber, foundationSignature } from '../types/survey';
 import { buildWarnings, isSpecConfirmed } from '../utils/validation';
+import { classifyMeasurement } from '../utils/judge';
+import { TrenchProfileChart } from './TrenchProfileChart';
 import { SpecGuard, LayerRow } from './SpecGuard';
 import { loadRoutes, buildSpans, findManholeByName, coordDistanceBetween } from '../utils/routes';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -402,6 +404,11 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
   const computed = compute();
 
   const mode = data.targetHeightMode || 'CUT_BOTTOM';
+  const isMhMode = mode.startsWith('MH_');
+  // 맨홀 검측은 시·종점 두 점만 다룬다 — 야장 표와 점간 현황 그림이 같은 배열을 쓴다
+  const tableRows = isMhMode
+    ? computed.rows.filter((_, idx) => idx === 0 || idx === computed.rows.length - 1)
+    : computed.rows;
   // 시·종점 맨홀 좌표로 계산한 연장 — 입력된 연장과 대조해 경고한다
   const coordLength = React.useMemo(() => {
     const all = getSavedManholes();
@@ -1563,40 +1570,21 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
               </tr>
             </thead>
             <tbody>
-              {(
-                data.targetHeightMode?.startsWith('MH_')
-                  ? computed.rows.filter((_, idx) => idx === 0 || idx === computed.rows.length - 1)
-                  : computed.rows
-              ).map((r, i) => {
+              {tableRows.map((r, i) => {
                 const key = measKey(spanKeyOf(data), mode, r.x);
                 const rawMeas = data.meas[key] || '';
-                const measVal = parseFloat(rawMeas);
                 const isDetailOpen = !!openDetail[key];
-                const isMhMode = !!data.targetHeightMode?.startsWith('MH_');
                 const label = isMhMode
                   ? (r.node === 'start' ? (data.startMhName || '시점 MH') : (data.endMhName || '종점 MH'))
                   : (r.node === 'start' ? '시점' : (r.node === 'end' ? '종점' : `+${trimNum(r.x)}`));
 
-                // 판정 계산
-                let judgeClass = 'judge none';
-                let judgeContent: React.ReactNode = '·';
-
-                if (rawMeas && isFinite(measVal) && r.target !== null) {
-                  const devM = measVal - r.target;
-                  const cm = Math.abs(devM) * 100;
-                  // 허용오차와 정확히 같은 값이 부동소수점 오차로 부적합이 되지 않게 한다
-                  // (4.929 - 4.899 = 0.03000000000000025 > 0.03)
-                  if (Math.abs(devM) <= computed.tol + 1e-9) {
-                    judgeClass = 'judge ok';
-                    judgeContent = <>적정 <small>{cm.toFixed(1)}</small></>;
-                  } else if (devM < 0) {
-                    judgeClass = 'judge cut';
-                    judgeContent = <>▼{cm.toFixed(1)} <small>더파기</small></>;
-                  } else {
-                    judgeClass = 'judge fill';
-                    judgeContent = <>▲{cm.toFixed(1)} <small>되메움</small></>;
-                  }
-                }
+                const judge = classifyMeasurement(rawMeas, r.target, computed.tol);
+                const judgeClass = `judge ${judge.status}`;
+                const judgeContent: React.ReactNode =
+                  judge.status === 'ok' ? <>적정 <small>{judge.cm!.toFixed(1)}</small></> :
+                  judge.status === 'cut' ? <>▼{judge.cm!.toFixed(1)} <small>더파기</small></> :
+                  judge.status === 'fill' ? <>▲{judge.cm!.toFixed(1)} <small>되메움</small></> :
+                  '·';
 
                 return (
                   <React.Fragment key={key}>
@@ -1689,6 +1677,22 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
           <span><i style={{ background: 'var(--ok)' }}></i>적정 — 허용오차 이내</span>
         </div>
       </section>
+
+      {/* 점간 현황 — 야장 표와 같은 tableRows 를 그림으로 이어 보여준다 */}
+      {tableRows.length > 0 && (
+        <section className="card">
+          <h2>점간 현황</h2>
+          <TrenchProfileChart
+            rows={tableRows}
+            meas={data.meas}
+            measKeyOf={x => measKey(spanKeyOf(data), mode, x)}
+            tol={computed.tol}
+            labelOf={(r) => isMhMode
+              ? (r.node === 'start' ? (data.startMhName || '시점 MH') : (data.endMhName || '종점 MH'))
+              : (r.node === 'start' ? '시점' : (r.node === 'end' ? '종점' : `+${trimNum(r.x)}`))}
+          />
+        </section>
+      )}
 
       {/* 5. 하단 액션 버튼 */}
       <div className="actions">
