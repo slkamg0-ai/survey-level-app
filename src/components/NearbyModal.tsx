@@ -69,7 +69,7 @@ export const NearbyModal: React.FC<Props> = ({ isOpen, onClose, onToast, onPick 
     );
   };
 
-  const poor = accuracy !== null && accuracy > 20;
+  const poor = accuracy !== null && accuracy > 10;
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
