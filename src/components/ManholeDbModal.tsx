@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ManholeMasterItem, matchManholeByNameOrNumber, manholeInvertIn, manholeInvertOut, manholeDropM } from '../types/survey';
+import { ManholeMasterItem, matchManholeByNameOrNumber, manholeInvertIn, manholeInvertOut, manholeDropM, decodeBranches, manholeIsJunction } from '../types/survey';
 import { Database, Plus, Trash2, X, FileText, Upload, Search } from 'lucide-react';
 
 interface Props {
@@ -30,7 +30,17 @@ export function getSavedManholes(): ManholeMasterItem[] {
             remarks: str(item.remarks),
             x: str(item.x),
             y: str(item.y),
-            distToNext: str(item.distToNext)
+            distToNext: str(item.distToNext),
+            branches: Array.isArray(item.branches)
+              ? item.branches
+                  .filter((b: any) => b && typeof b === 'object' && b.name && b.invertEl)
+                  .map((b: any) => ({
+                    name: String(b.name),
+                    dir: b.dir === 'out' ? 'out' : 'in',
+                    invertEl: String(b.invertEl),
+                    dia: str(b.dia)
+                  }))
+              : undefined
           }));
       }
       console.error('맨홀 DB가 배열이 아닙니다. 기본값으로 대체합니다.');
@@ -54,7 +64,7 @@ export function getSavedManholes(): ManholeMasterItem[] {
  * 좌표는 6자리 이상 큰 수라 관저고와 섞일 일이 없지만, 열 이름이 있으면 그쪽을 믿는다.
  */
 export interface ColumnMap {
-  name: number; invertEl: number; x: number; y: number; dist: number; remarks: number;
+  name: number; invertEl: number; x: number; y: number; dist: number; remarks: number; branches: number;
 }
 
 const HEADER_PATTERNS: { key: keyof ColumnMap; re: RegExp }[] = [
@@ -63,11 +73,13 @@ const HEADER_PATTERNS: { key: keyof ColumnMap; re: RegExp }[] = [
   { key: 'x', re: /^x$|x좌표|경도|easting|^e$/i },
   { key: 'y', re: /^y$|y좌표|위도|northing|^n$/i },
   { key: 'dist', re: /거리|연장|간격|length|dist/i },
-  { key: 'remarks', re: /비고|remark|note/i }
+  { key: 'remarks', re: /비고|remark|note/i },
+  // 3방·4방 합류 맨홀의 추가 연결관 목록 — "이름:in|out:관저고:관경;..." 형식 한 칸
+  { key: 'branches', re: /분기|합류|branch/i }
 ];
 
 export function detectColumns(cells: string[]): ColumnMap | null {
-  const map: ColumnMap = { name: -1, invertEl: -1, x: -1, y: -1, dist: -1, remarks: -1 };
+  const map: ColumnMap = { name: -1, invertEl: -1, x: -1, y: -1, dist: -1, remarks: -1, branches: -1 };
   let hits = 0;
   cells.forEach((cell, i) => {
     const c = cell.trim();
@@ -95,7 +107,8 @@ export function parseManholeLine(
       x: at(cols.x) || undefined,
       y: at(cols.y) || undefined,
       distToNext: at(cols.dist) || undefined,
-      remarks: at(cols.remarks) || undefined
+      remarks: at(cols.remarks) || undefined,
+      branches: decodeBranches(at(cols.branches))
     };
   }
 
@@ -506,6 +519,7 @@ export const ManholeDbModal: React.FC<Props> = ({
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '350px', overflowY: 'auto' }}>
                 {filteredItems.map(item => {
                   const drop = manholeDropM(item);
+                  const junction = manholeIsJunction(item);
                   return (
                   <div
                     key={item.id}
@@ -544,6 +558,22 @@ export const ManholeDbModal: React.FC<Props> = ({
                           title="유입관저고와 유출관저고가 달라 낙차가 있는 맨홀입니다"
                         >
                           ⚡ 낙차맨홀 Δ{Math.abs(drop).toFixed(2)}m
+                        </span>
+                      )}
+                      {junction && (
+                        <span
+                          style={{
+                            fontSize: '10.5px',
+                            fontWeight: 700,
+                            padding: '2px 6px',
+                            borderRadius: '999px',
+                            border: '1px solid var(--primary)',
+                            background: 'var(--primary-bg)',
+                            color: 'var(--primary)'
+                          }}
+                          title={`추가 연결관 ${item.branches!.length}개 — 야장 화면의 방사형 다이어그램에서 확인`}
+                        >
+                          🔀 합류 {item.branches!.length}
                         </span>
                       )}
                       {item.remarks && (

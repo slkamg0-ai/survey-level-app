@@ -4,6 +4,7 @@ import { buildWarnings, isSpecConfirmed } from '../utils/validation';
 import { classifyMeasurement } from '../utils/judge';
 import { TrenchProfileChart } from './TrenchProfileChart';
 import { SpecGuard, LayerRow } from './SpecGuard';
+import { JunctionDiagram } from './JunctionDiagram';
 import { loadRoutes, buildSpans, findManholeByName, coordDistanceBetween } from '../utils/routes';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { PP_DOUBLE_SPECS, STORMWATER_SPECS, findPipeThickness } from '../data/pipeSpecs';
@@ -437,6 +438,13 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
       findManholeByName(all, data.endMhName)
     );
   }, [data.startMhName, data.endMhName]);
+
+  /** 합류(분기) 다이어그램용 — 지금 diagramNode로 보고 있는 맨홀의 DB 항목과, 좌표 조회용 전체 목록 */
+  const allManholesForJunction = React.useMemo(() => getSavedManholes(), [data.startMhName, data.endMhName]);
+  const junctionCenter = React.useMemo(() => {
+    const name = diagramNode === 'end' ? data.endMhName : data.startMhName;
+    return findManholeByName(allManholesForJunction, name);
+  }, [allManholesForJunction, diagramNode, data.startMhName, data.endMhName]);
 
   /** 도면 연장표에 적힌 값 (시점 맨홀의 '다음까지 거리') */
   const sheetLength = React.useMemo(() => {
@@ -1545,6 +1553,25 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
             📍 종점 맨홀 ({data.endMhName || '종점'}) 레이아웃
           </button>
         </div>
+      )}
+
+      {/* 3방·4방 합류 맨홀(예: 4방향에서 유입·유출이 섞이는 맨홀) 방사형 다이어그램.
+          맨홀DB에 분기 정보가 등록돼 있을 때만 나타난다 — 놓치기 쉬운 방향·관저고를
+          한 그림에 모아 보여줘 착오를 줄인다. */}
+      {isMhMode && junctionCenter && (junctionCenter.branches?.length ?? 0) > 0 && (
+        <section className="card" style={{ padding: '8px 10px' }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--ink-2)', marginBottom: '2px' }}>
+            🔀 {junctionCenter.name} 합류 맨홀 — 유입·유출 방향 및 관저고
+          </div>
+          <JunctionDiagram
+            center={junctionCenter}
+            allManholes={allManholesForJunction}
+            highlightNames={[diagramNode === 'end' ? data.startMhName : data.endMhName].filter(Boolean) as string[]}
+          />
+          <p className="junction-cap">
+            🎯 표시가 지금 야장에서 측량 중인 방향입니다. 좌표가 없는 분기는 방향이 실제와 다를 수 있어요 — 관저고 숫자로 확인하세요.
+          </p>
+        </section>
       )}
 
       {/* 기초 층 구성 확인 게이트 + 오입력 경고 */}

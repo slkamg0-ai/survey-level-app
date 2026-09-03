@@ -41,6 +41,18 @@ export type TargetHeightMode =
   | 'MH_INVERT'     // 맨홀 4. 내부 바닥고
   | 'CUSTOM';       // 검측용/사용자지정고 (Custom Offset)
 
+/**
+ * 3방·4방 합류(분기) 맨홀에서, 시점·종점 한 쌍으로 못 담는 "그 외" 연결관 하나.
+ * 예: M2-91처럼 유입이 여러 갈래이거나, 야장의 시점/종점 흐름과 별도로
+ * 추가로 들고 나는 관이 있는 합류 맨홀을 표시하기 위한 것이다.
+ */
+export interface ManholeBranch {
+  name: string;        // 연결된 맨홀명(예: M2-91-1) 또는 방향 설명
+  dir: 'in' | 'out';    // 유입 / 유출
+  invertEl: string;     // 그 관 자체의 관저고(EL)
+  dia?: string;         // 관경(mm, 선택)
+}
+
 export interface ManholeMasterItem {
   id: string;
   name: string;      // 맨홀 명칭 (예: MH01, MH02)
@@ -61,6 +73,46 @@ export interface ManholeMasterItem {
   y?: string;
   /** 도면 연장표상 다음 맨홀까지 거리 (m). 좌표 계산값과 대조하는 검산용 */
   distToNext?: string;
+  /** 3방 이상 합류 맨홀의 추가 연결관 목록 — 없으면 일반(2방) 맨홀 */
+  branches?: ManholeBranch[];
+}
+
+const BRANCH_SEP = ';';
+const BRANCH_FIELD_SEP = ':';
+
+/** 분기 목록을 CSV 한 칸에 담을 문자열로 직렬화한다: "이름:in|out:관저고:관경;..." */
+export function encodeBranches(branches?: ManholeBranch[]): string {
+  if (!branches || branches.length === 0) return '';
+  return branches
+    .filter(b => b.name.trim() && isFinite(parseFloat(b.invertEl)))
+    .map(b => [b.name.trim(), b.dir === 'out' ? 'out' : 'in', b.invertEl.trim(), (b.dia || '').trim()].join(BRANCH_FIELD_SEP))
+    .join(BRANCH_SEP);
+}
+
+/** encodeBranches의 역변환. 형식에 안 맞는 토큰은 조용히 건너뛴다. */
+export function decodeBranches(raw?: string): ManholeBranch[] | undefined {
+  if (!raw || !raw.trim()) return undefined;
+  const out: ManholeBranch[] = [];
+  raw.split(BRANCH_SEP).forEach(token => {
+    const t = token.trim();
+    if (!t) return;
+    const parts = t.split(BRANCH_FIELD_SEP);
+    const name = (parts[0] || '').trim();
+    const invertEl = (parts[2] || '').trim();
+    if (!name || !isFinite(parseFloat(invertEl))) return;
+    out.push({
+      name,
+      dir: (parts[1] || '').trim() === 'out' ? 'out' : 'in',
+      invertEl,
+      dia: (parts[3] || '').trim() || undefined
+    });
+  });
+  return out.length ? out : undefined;
+}
+
+/** 3방 이상 합류 맨홀인지 — 시점/종점 한 쌍 외에 추가 연결관이 있는지 */
+export function manholeIsJunction(item: ManholeMasterItem): boolean {
+  return !!(item.branches && item.branches.length > 0);
 }
 
 /** 맨홀로 흘러 들어오는 쪽(상류 구간의 종점)에서 쓸 관저고 */
