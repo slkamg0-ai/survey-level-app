@@ -34,7 +34,15 @@ const num = (v?: string) => {
   return isFinite(n) ? n : null;
 };
 
-/** 두 맨홀 좌표로 각도(라디안, 수학 관습 — 오른쪽 0°, 위쪽 +90°)를 구한다. 좌표가 없으면 null */
+/**
+ * 두 맨홀 좌표로 각도(라디안, 수학 관습 — 오른쪽 0°, 위쪽 +90°)를 구한다.
+ * 좌표가 없으면 null. 중심점과 사실상 같은 위치(신뢰 못 할 보간·중복 좌표 —
+ * 실측 관로는 대개 수십m 이상 떨어져 있으므로 몇 m 이내면 좌표 오류로 본다)도
+ * null로 처리해 fallback 균등 배치를 쓰게 한다 — 안 그러면 다른 정상 분기와
+ * 거의 같은 각도가 나와 화살표가 겹쳐서 안 보이는 문제가 생긴다.
+ */
+const MIN_RELIABLE_DIST_M = 5;
+
 function coordAngle(center: ManholeMasterItem, otherName: string, all: ManholeMasterItem[]): number | null {
   const cx = num(center.x);
   const cy = num(center.y);
@@ -46,7 +54,7 @@ function coordAngle(center: ManholeMasterItem, otherName: string, all: ManholeMa
   if (ox === null || oy === null) return null;
   const dx = ox - cx;
   const dy = oy - cy;
-  if (Math.abs(dx) < 1e-9 && Math.abs(dy) < 1e-9) return null;
+  if (Math.hypot(dx, dy) < MIN_RELIABLE_DIST_M) return null;
   return Math.atan2(dy, dx);
 }
 
