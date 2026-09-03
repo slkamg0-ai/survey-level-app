@@ -106,6 +106,14 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
   );
 
   const [openDetail, setOpenDetail] = useState<Record<string, boolean>>({});
+  // 맨홀(MH) 검측 모드에서 층 구성 다이어그램/게이지가 시점·종점 중 어느 맨홀 기준인지 —
+  // 예전엔 시점 관저고로 고정돼 종점 맨홀은 선택도, 자동 전환도 안 됐다.
+  const [diagramNode, setDiagramNode] = useState<'start' | 'end'>('start');
+  // 구간(시점·종점 맨홀 쌍)이 바뀌면 이전 구간에서 골라둔 '종점' 선택이 새 구간까지
+  // 따라오지 않도록 시점으로 되돌린다.
+  useEffect(() => {
+    setDiagramNode('start');
+  }, [data.startMhName, data.endMhName]);
   const [armReset, setArmReset] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
@@ -455,11 +463,16 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
   const specConfirmed = isSpecConfirmed(data);
 
   /**
-   * 기초 층 구성. 시점 관저고를 기준으로 아래에서 위로 쌓아 보여준다.
+   * 기초 층 구성. 아래에서 위로 쌓아 보여준다.
    * 각 층의 topEl 은 compute() 의 검측 목표고 산식과 같은 식을 쓴다.
+   * 맨홀(MH) 모드는 시점·종점 맨홀의 관저고가 서로 다를 수 있어(낙차맨홀 등)
+   * diagramNode 선택에 따라 기준점을 바꾼다 — 관로 모드는 여러 중간점을 다루므로 항상 시점 기준.
    */
   const layers: LayerRow[] = (() => {
-    const ref = computed.rows.length ? computed.rows[0].invEl : null;
+    const refRow = isMhMode && diagramNode === 'end' && computed.rows.length > 1
+      ? computed.rows[computed.rows.length - 1]
+      : computed.rows[0];
+    const ref = computed.rows.length ? refRow.invEl : null;
     const el = (offset: number) => (ref === null ? null : ref - offset);
     const { t, sand, conc, agg, mhBase, dia } = computed;
 
@@ -1513,12 +1526,35 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
         </div>
       )}
 
+      {/* 맨홀(MH) 검측 모드: 층 구성 다이어그램이 시점·종점 어느 맨홀 기준인지 선택.
+          낙차맨홀 등에서는 두 맨홀의 관저고가 달라 하나로 고정하면 안 된다. */}
+      {isMhMode && computed.rows.length > 1 && (
+        <div className="chips" style={{ gap: '3px', margin: '0 0 6px' }}>
+          <button
+            type="button"
+            aria-pressed={diagramNode === 'start'}
+            onClick={() => setDiagramNode('start')}
+          >
+            📍 시점 맨홀 ({data.startMhName || '시점'}) 레이아웃
+          </button>
+          <button
+            type="button"
+            aria-pressed={diagramNode === 'end'}
+            onClick={() => setDiagramNode('end')}
+          >
+            📍 종점 맨홀 ({data.endMhName || '종점'}) 레이아웃
+          </button>
+        </div>
+      )}
+
       {/* 기초 층 구성 확인 게이트 + 오입력 경고 */}
       <SpecGuard
         warnings={warnings}
         layers={layers}
         diagram={{
-          invEl: computed.rows.length ? computed.rows[0].invEl : null,
+          invEl: computed.rows.length
+            ? (isMhMode && diagramNode === 'end' ? computed.rows[computed.rows.length - 1].invEl : computed.rows[0].invEl)
+            : null,
           sand: computed.sand,
           conc: computed.conc,
           agg: computed.agg,
@@ -1527,7 +1563,11 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
           mhBase: computed.mhBase
         }}
         mode={mode}
-        modeLabel={MODE_LABELS[mode] || '터파기 바닥고'}
+        modeLabel={
+          isMhMode
+            ? `${diagramNode === 'end' ? (data.endMhName || '종점') : (data.startMhName || '시점')} · ${MODE_LABELS[mode] || '터파기 바닥고'}`
+            : (MODE_LABELS[mode] || '터파기 바닥고')
+        }
         confirmed={specConfirmed}
         confirmedAt={data.specConfirmedAt}
         onConfirm={handleConfirmSpec}
@@ -1609,6 +1649,8 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
                       onClick={(e) => {
                         if ((e.target as HTMLElement).closest('input')) return;
                         setOpenDetail(prev => ({ ...prev, [key]: !prev[key] }));
+                        // 맨홀 모드에서 시점/종점 행을 열면 위 층 구성 다이어그램도 그 맨홀 기준으로 자동 전환
+                        if (isMhMode && (r.node === 'start' || r.node === 'end')) setDiagramNode(r.node);
                       }}
                       style={{ cursor: 'pointer' }}
                     >
