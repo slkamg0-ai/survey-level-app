@@ -75,6 +75,8 @@ export interface ManholeMasterItem {
   distToNext?: string;
   /** 3방 이상 합류 맨홀의 추가 연결관 목록 — 없으면 일반(2방) 맨홀 */
   branches?: ManholeBranch[];
+  /** 분기정보 칸에서 파싱하지 못하고 건너뛴 조각(관저고 누락 등) — 있으면 화면에 오류로 알린다 */
+  branchIssues?: string[];
 }
 
 const BRANCH_SEP = ';';
@@ -113,6 +115,27 @@ export function decodeBranches(raw?: string): ManholeBranch[] | undefined {
 /** 3방 이상 합류 맨홀인지 — 시점/종점 한 쌍 외에 추가 연결관이 있는지 */
 export function manholeIsJunction(item: ManholeMasterItem): boolean {
   return !!(item.branches && item.branches.length > 0);
+}
+
+/**
+ * decodeBranches가 조용히 건너뛴 조각이 있는지 검사한다.
+ * 관저고를 빠뜨리는 등 형식이 안 맞는 분기는 값 손실 없이 화면에 오류로 드러내기 위한 것 —
+ * 그냥 무시하면 "합류관이 없다"로 오인해 현장에서 놓칠 수 있다.
+ */
+export function branchParseIssues(raw?: string): string[] {
+  if (!raw || !raw.trim()) return [];
+  const issues: string[] = [];
+  raw.split(BRANCH_SEP).forEach(token => {
+    const t = token.trim();
+    if (!t) return;
+    const parts = t.split(BRANCH_FIELD_SEP);
+    const name = (parts[0] || '').trim();
+    const invertEl = (parts[2] || '').trim();
+    if (!name || !isFinite(parseFloat(invertEl))) {
+      issues.push(t);
+    }
+  });
+  return issues;
 }
 
 /** 맨홀로 흘러 들어오는 쪽(상류 구간의 종점)에서 쓸 관저고 */

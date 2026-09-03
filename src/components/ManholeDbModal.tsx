@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ManholeMasterItem, matchManholeByNameOrNumber, manholeInvertIn, manholeInvertOut, manholeDropM, decodeBranches, manholeIsJunction } from '../types/survey';
+import { ManholeMasterItem, matchManholeByNameOrNumber, manholeInvertIn, manholeInvertOut, manholeDropM, decodeBranches, manholeIsJunction, branchParseIssues } from '../types/survey';
 import { Database, Plus, Trash2, X, FileText, Upload, Search } from 'lucide-react';
 
 interface Props {
@@ -40,6 +40,9 @@ export function getSavedManholes(): ManholeMasterItem[] {
                     invertEl: String(b.invertEl),
                     dia: str(b.dia)
                   }))
+              : undefined,
+            branchIssues: Array.isArray(item.branchIssues)
+              ? item.branchIssues.map((s: any) => String(s)).filter(Boolean)
               : undefined
           }));
       }
@@ -108,7 +111,11 @@ export function parseManholeLine(
       y: at(cols.y) || undefined,
       distToNext: at(cols.dist) || undefined,
       remarks: at(cols.remarks) || undefined,
-      branches: decodeBranches(at(cols.branches))
+      branches: decodeBranches(at(cols.branches)),
+      branchIssues: (() => {
+        const issues = branchParseIssues(at(cols.branches));
+        return issues.length ? issues : undefined;
+      })()
     };
   }
 
@@ -574,6 +581,22 @@ export const ManholeDbModal: React.FC<Props> = ({
                           title={`추가 연결관 ${item.branches!.length}개 — 야장 화면의 방사형 다이어그램에서 확인`}
                         >
                           🔀 합류 {item.branches!.length}
+                        </span>
+                      )}
+                      {item.branchIssues && item.branchIssues.length > 0 && (
+                        <span
+                          style={{
+                            fontSize: '10.5px',
+                            fontWeight: 700,
+                            padding: '2px 6px',
+                            borderRadius: '999px',
+                            border: '1px solid var(--cut)',
+                            background: 'var(--cut-bg)',
+                            color: 'var(--cut)'
+                          }}
+                          title={`분기정보 형식이 안 맞아 건너뛴 항목 — 관저고 값을 확인하세요: ${item.branchIssues.join(', ')}`}
+                        >
+                          ⚠️ 분기정보 오류 {item.branchIssues.length}
                         </span>
                       )}
                       {item.remarks && (

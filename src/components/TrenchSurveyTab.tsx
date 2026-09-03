@@ -1574,6 +1574,16 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
         </section>
       )}
 
+      {/* 분기정보는 있지만 형식이 안 맞아 전부 건너뛴 경우 — 그림이 안 뜬다고 "합류 없음"으로
+          오인하지 않도록 알린다. 맨홀DB 관리 화면에서 ⚠️ 배지로도 확인할 수 있다. */}
+      {isMhMode && junctionCenter && !junctionCenter.branches?.length && (junctionCenter.branchIssues?.length ?? 0) > 0 && (
+        <section className="card" style={{ padding: '8px 10px', borderColor: 'var(--cut)' }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--cut)' }}>
+            ⚠️ {junctionCenter.name}의 분기정보 형식이 안 맞아 표시하지 못했습니다 — 맨홀DB에서 관저고 값을 확인해주세요.
+          </div>
+        </section>
+      )}
+
       {/* 기초 층 구성 확인 게이트 + 오입력 경고 */}
       <SpecGuard
         warnings={warnings}
