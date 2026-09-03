@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ManholeMasterItem, matchManholeByNameOrNumber } from '../types/survey';
+import { ManholeMasterItem, matchManholeByNameOrNumber, manholeInvertIn, manholeInvertOut, manholeDropM } from '../types/survey';
 import { Database, Plus, Trash2, X, FileText, Upload, Search } from 'lucide-react';
 
 interface Props {
@@ -26,6 +26,7 @@ export function getSavedManholes(): ManholeMasterItem[] {
             id: String(item.id ?? `mh-${i + 1}`),
             name: String(item.name ?? ''),
             invertEl: String(item.invertEl ?? ''),
+            invertElOut: str(item.invertElOut),
             remarks: str(item.remarks),
             x: str(item.x),
             y: str(item.y),
@@ -170,6 +171,7 @@ export const ManholeDbModal: React.FC<Props> = ({
   const [items, setItems] = useState<ManholeMasterItem[]>(() => getSavedManholes());
   const [mhName, setMhName] = useState('');
   const [invertEl, setInvertEl] = useState('');
+  const [invertElOut, setInvertElOut] = useState('');
   const [remarks, setRemarks] = useState('');
   const [coordX, setCoordX] = useState('');
   const [coordY, setCoordY] = useState('');
@@ -194,6 +196,7 @@ export const ManholeDbModal: React.FC<Props> = ({
       id: Date.now().toString(),
       name: mhName.trim().toUpperCase(),
       invertEl: invertEl.trim(),
+      invertElOut: invertElOut.trim() || undefined,
       remarks: remarks.trim() || undefined,
       x: coordX.trim() || undefined,
       y: coordY.trim() || undefined,
@@ -205,11 +208,17 @@ export const ManholeDbModal: React.FC<Props> = ({
     saveManholeList(updated);
     setMhName('');
     setInvertEl('');
+    setInvertElOut('');
     setRemarks('');
     setCoordX('');
     setCoordY('');
     setDistNext('');
-    onToast(`✅ '${newItem.name}' 관저고(${newItem.invertEl}m) 등록 완료`);
+    const drop = manholeDropM(newItem);
+    onToast(
+      drop !== null
+        ? `✅ '${newItem.name}' 등록 완료 — 낙차맨홀 (유입 ${newItem.invertEl} → 유출 ${newItem.invertElOut}m, Δ${Math.abs(drop).toFixed(2)}m)`
+        : `✅ '${newItem.name}' 관저고(${newItem.invertEl}m) 등록 완료`
+    );
   };
 
   const handleBatchImport = () => {
@@ -270,16 +279,21 @@ export const ManholeDbModal: React.FC<Props> = ({
       onSelectManhole(type, item);
       return;
     }
+    // 시점(start)은 이 구간으로 물이 나가는 쪽 → 유출관저고, 종점(end)은 들어오는 쪽 → 유입관저고.
+    // 낙차맨홀이 아니면 두 값이 같아 기존과 동일하게 동작한다.
+    const applied = type === 'start' ? manholeInvertOut(item) : manholeInvertIn(item);
     {
       try {
         const saved = localStorage.getItem('survey_trench_data_v2');
         const data = saved ? JSON.parse(saved) : {};
         if (type === 'start') {
           data.startMhName = item.name;
-          data.startInv = item.invertEl;
+          data.startInv = applied;
         } else {
           data.endMhName = item.name;
-          data.endInv = item.invertEl;
+          data.endInv = applied;
+          // 종점 맨홀 자신의 터파기/바닥 측량 기준(MH_* 모드용) — 낙차맨홀이면 유출관저고가 더 낮다
+          data.endMhOutInv = manholeInvertOut(item);
         }
         data.secName = `${data.startMhName || '시점'} ~ ${data.endMhName || '종점'}`;
         localStorage.setItem('survey_trench_data_v2', JSON.stringify(data));
@@ -288,7 +302,7 @@ export const ManholeDbModal: React.FC<Props> = ({
         console.error(e);
       }
     }
-    onToast(`⚡ '${item.name}' 관저고(${item.invertEl}m)가 야장 ${type === 'start' ? '시점' : '종점'}으로 적용되었습니다!`);
+    onToast(`⚡ '${item.name}' 관저고(${applied}m)가 야장 ${type === 'start' ? '시점' : '종점'}으로 적용되었습니다!`);
   };
 
   const filteredItems = items.filter(i =>
@@ -427,6 +441,16 @@ export const ManholeDbModal: React.FC<Props> = ({
                   <Plus size={16} /> 등록
                 </button>
 
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="유출관저고 (낙차맨홀만, 선택)"
+                  value={invertElOut}
+                  onChange={e => setInvertElOut(e.target.value)}
+                  title="유입관저고와 다르면 낙차맨홀로 처리됩니다. 비워두면 일반 맨홀입니다."
+                  style={{ height: '36px', fontSize: '13px', gridColumn: 'span 3' }}
+                />
+
                 {/* 좌표·연장 — 구간 연장 자동 산출용 */}
                 <input
                   type="text"
@@ -480,14 +504,16 @@ export const ManholeDbModal: React.FC<Props> = ({
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '350px', overflowY: 'auto' }}>
-                {filteredItems.map(item => (
+                {filteredItems.map(item => {
+                  const drop = manholeDropM(item);
+                  return (
                   <div
                     key={item.id}
                     style={{
                       padding: '8px 12px',
                       borderRadius: '8px',
                       background: 'var(--surface-2)',
-                      border: '1px solid var(--line)',
+                      border: drop !== null ? '1px solid var(--fill)' : '1px solid var(--line)',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
@@ -495,13 +521,31 @@ export const ManholeDbModal: React.FC<Props> = ({
                       gap: '6px'
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                       <span style={{ fontWeight: 700, fontSize: '13.5px', color: 'var(--primary)', minWidth: '55px' }}>
                         {item.name}
                       </span>
                       <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ink)' }}>
-                        관저고 EL <b style={{ color: 'var(--ink)', fontSize: '14px' }}>{item.invertEl} m</b>
+                        관저고 EL <b style={{ color: 'var(--ink)', fontSize: '14px' }}>
+                          {drop !== null ? `${item.invertEl} → ${item.invertElOut}` : item.invertEl} m
+                        </b>
                       </span>
+                      {drop !== null && (
+                        <span
+                          style={{
+                            fontSize: '10.5px',
+                            fontWeight: 700,
+                            padding: '2px 6px',
+                            borderRadius: '999px',
+                            border: '1px solid var(--fill)',
+                            background: 'var(--fill-bg)',
+                            color: 'var(--fill)'
+                          }}
+                          title="유입관저고와 유출관저고가 달라 낙차가 있는 맨홀입니다"
+                        >
+                          ⚡ 낙차맨홀 Δ{Math.abs(drop).toFixed(2)}m
+                        </span>
+                      )}
                       {item.remarks && (
                         <span style={{ fontSize: '11px', color: 'var(--ink-3)' }}>
                           ({item.remarks})
@@ -565,7 +609,8 @@ export const ManholeDbModal: React.FC<Props> = ({
                       </button>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

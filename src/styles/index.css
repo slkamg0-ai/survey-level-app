@@ -1,25 +1,26 @@
 :root {
   color-scheme: light dark;
-  
-  --paper: #EEF1F0;
+
+  /* 야장 블루프린트 — 흰 바탕 + 블루 라인 하나 */
+  --paper: #FFFFFF;
   --surface: #FFFFFF;
-  --surface-2: #F6F9F8;
-  --surface-3: #E2E8E6;
-  --ink: #12171A;
-  --ink-2: #58666B;
-  --ink-3: #8A979B;
-  --line: #D5DCDA;
-  --line-2: #E6ECEA;
-  --primary: #2563EB;
-  --primary-bg: #DBEAFE;
-  
-  --cut: #B03A2A;
-  --cut-bg: #F8E5E1;
-  --fill: #22608C;
-  --fill-bg: #E0EBF4;
-  --ok: #1B7A4E;
-  --ok-bg: #DDF0E5;
-  --shadow: 0 1px 3px rgba(16, 28, 32, .05), 0 10px 26px -16px rgba(16, 28, 32, .30);
+  --surface-2: #F3F5FC;
+  --surface-3: #E4E9FA;
+  --ink: #1C2B63;
+  --ink-2: #5A6389;
+  --ink-3: #9AA1C4;
+  --line: #C7CFEF;
+  --line-2: #E3E8F8;
+  --primary: #2B4FD1;
+  --primary-bg: #E8EDFC;
+
+  --cut: #D6473F;
+  --cut-bg: #FBEAE8;
+  --fill: #2F7FE0;
+  --fill-bg: #E7F1FC;
+  --ok: #1F9D63;
+  --ok-bg: #E5F6ED;
+  --shadow: 0 1px 2px rgba(28, 43, 99, .05);
 
   --sans: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", Pretendard, "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, "D2Coding", "Nanum Gothic Coding", monospace;
@@ -27,25 +28,25 @@
 }
 
 :root[data-theme="dark"] {
-  --paper: #0E1214;
-  --surface: #171C1F;
-  --surface-2: #1D2427;
-  --surface-3: #263034;
-  --ink: #E9EEEC;
-  --ink-2: #9BA9AC;
-  --ink-3: #6F7E7F;
-  --line: #2B3336;
-  --line-2: #222A2D;
-  --primary: #3B82F6;
-  --primary-bg: #1E3A8A;
-  
-  --cut: #E8735C;
-  --cut-bg: #3B211B;
-  --fill: #74ACD8;
-  --fill-bg: #14303F;
-  --ok: #4FC08A;
-  --ok-bg: #123024;
-  --shadow: 0 1px 3px rgba(0, 0, 0, .4), 0 10px 26px -16px rgba(0, 0, 0, .8);
+  --paper: #0E1230;
+  --surface: #151B3E;
+  --surface-2: #1B2350;
+  --surface-3: #242C5E;
+  --ink: #E7EBFB;
+  --ink-2: #A9B0D6;
+  --ink-3: #6D75A0;
+  --line: #323A6E;
+  --line-2: #262E5C;
+  --primary: #7B93F2;
+  --primary-bg: #1C2557;
+
+  --cut: #E2726D;
+  --cut-bg: #3A1A1B;
+  --fill: #5FA9E6;
+  --fill-bg: #12293C;
+  --ok: #43C384;
+  --ok-bg: #123020;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 20px -14px rgba(0, 0, 0, .5);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }

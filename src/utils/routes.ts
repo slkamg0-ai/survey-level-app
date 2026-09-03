@@ -1,4 +1,4 @@
-import { ManholeMasterItem, SurveyRoute, RouteSpan } from '../types/survey';
+import { ManholeMasterItem, SurveyRoute, RouteSpan, manholeInvertIn, manholeInvertOut } from '../types/survey';
 import { parseNum } from './storage';
 
 /**
@@ -107,14 +107,19 @@ export function coordDistanceBetween(
  */
 export function applyManholePick<T extends {
   startMhName?: string; endMhName?: string;
-  startInv?: string; endInv?: string; secName?: string; len?: string;
+  startInv?: string; endInv?: string; endMhOutInv?: string; secName?: string; len?: string;
 }>(current: T, type: 'start' | 'end', item: ManholeMasterItem, all: ManholeMasterItem[]): T & { len: string } {
   const next = {
     ...current,
     startMhName: type === 'start' ? item.name : (current.startMhName || ''),
-    startInv: type === 'start' ? item.invertEl : (current.startInv || ''),
+    // 시점 맨홀은 이 구간으로 물이 "나가는" 쪽 — 낙차맨홀이면 유출관저고를 써야 한다
+    startInv: type === 'start' ? manholeInvertOut(item) : (current.startInv || ''),
     endMhName: type === 'end' ? item.name : (current.endMhName || ''),
-    endInv: type === 'end' ? item.invertEl : (current.endInv || '')
+    // 종점 맨홀은 이 구간에서 물이 "들어오는" 쪽 — 유입관저고를 쓴다
+    endInv: type === 'end' ? manholeInvertIn(item) : (current.endInv || ''),
+    // 종점 맨홀 자신의 구조(터파기·바닥) 측량 기준 — 낙차맨홀이면 유입(endInv)이 아니라
+    // 그 맨홀의 유출관저고(더 낮은 값)가 기준이 된다
+    endMhOutInv: type === 'end' ? manholeInvertOut(item) : (current.endMhOutInv || '')
   };
   (next as any).secName = `${next.startMhName || '시점'} ~ ${next.endMhName || '종점'}`;
 

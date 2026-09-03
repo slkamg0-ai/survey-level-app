@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { TrenchSurveyData, TrenchRow, PipeType, ManholePhotoGPS, matchManholeByNameOrNumber, foundationSignature } from '../types/survey';
+import { TrenchSurveyData, TrenchRow, PipeType, ManholePhotoGPS, matchManholeByNameOrNumber, foundationSignature, manholeInvertIn, manholeInvertOut } from '../types/survey';
 import { buildWarnings, isSpecConfirmed } from '../utils/validation';
 import { classifyMeasurement } from '../utils/judge';
 import { TrenchProfileChart } from './TrenchProfileChart';
@@ -346,14 +346,26 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
     }
     xs.push(L);
 
+    // 종점 맨홀 "자신"의 터파기/바닥 기준 — 낙차맨홀이면 이 구간 유입관저고(ei)가 아니라
+    // 그 맨홀의 유출관저고(더 낮은 값, next 구간으로 나가는 값)가 기준이 된다.
+    // 없으면(구버전 데이터·수동입력 등) ei를 그대로 쓴다 — 낙차 없는 일반 맨홀과 동일 결과.
+    const endMhOutInv = num(data.endMhOutInv);
+
     out.rows = xs.map((d, i) => {
-      const invEl = si - out.slopePerM * d;
-      const topEl = dia !== null ? invEl + dia + t : null;
+      const pipeInvEl = si - out.slopePerM * d; // 관로 보간 관저고 — 관로 Layer(1~6)와 관상단고 계산에 쓴다
+      const nodeType: 'start' | 'end' | '' = i === 0 ? 'start' : (i === xs.length - 1 ? 'end' : '');
+      const mode = data.targetHeightMode || 'CUT_BOTTOM';
+      // 맨홀 Layer(MH_*)는 관로 보간이 아니라 그 맨홀 자신의 기준고를 쓴다.
+      // 시점은 si(이미 유출관저고), 종점은 그 맨홀의 유출관저고(endMhOutInv)를 쓴다 —
+      // 종점 맨홀이 낙차맨홀이면 ei(유입)로는 실제 터파기/바닥 깊이보다 얕게 나온다.
+      const invEl = mode.startsWith('MH_') && nodeType === 'end' && endMhOutInv !== null
+        ? endMhOutInv
+        : pipeInvEl;
+      const topEl = dia !== null ? pipeInvEl + dia + t : null;
       const cutBottomEl = invEl - base; // 1. 관로 터파기 바닥고
 
       // 하이브리드 검측 목표 높이 계산 (현장 Layer 기준)
       let targetEl = cutBottomEl;
-      const mode = data.targetHeightMode || 'CUT_BOTTOM';
 
       if (mode === 'AGGREGATE_TOP') {
         // 2. 관로 골재 포설고 (관저고 - 관두께 - 모래 - 콘크리트)
@@ -394,7 +406,7 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
         invEl,
         topEl,
         target: ih === null ? null : ih - targetEl,
-        node: i === 0 ? 'start' : (i === xs.length - 1 ? 'end' : '')
+        node: nodeType
       };
     });
 
@@ -498,8 +510,9 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
       startMhName: sp.start.name,
       endMhName: sp.end.name,
       secName: `${sp.start.name} ~ ${sp.end.name}`,
-      startInv: sp.start.invertEl,
-      endInv: sp.end.invertEl,
+      startInv: manholeInvertOut(sp.start),
+      endInv: manholeInvertIn(sp.end),
+      endMhOutInv: manholeInvertOut(sp.end),
       len: sp.length !== null ? sp.length.toFixed(2) : prev.len
     }));
     onToast(`${sp.start.name} ~ ${sp.end.name} 구간으로 이동`);
@@ -896,12 +909,13 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
                       setData(prev => ({
                         ...prev,
                         startMhName: startItem ? startItem.name : prev.startMhName,
-                        startInv: startItem ? startItem.invertEl : prev.startInv,
+                        startInv: startItem ? manholeInvertOut(startItem) : prev.startInv,
                         endMhName: endItem ? endItem.name : prev.endMhName,
-                        endInv: endItem ? endItem.invertEl : prev.endInv,
+                        endInv: endItem ? manholeInvertIn(endItem) : prev.endInv,
+                        endMhOutInv: endItem ? manholeInvertOut(endItem) : prev.endMhOutInv,
                         secName: `${(startItem ? startItem.name : prev.startMhName) || '시점'} ~ ${(endItem ? endItem.name : prev.endMhName) || '종점'}`
                       }));
-                      onToast(`⚡ 맨홀 DB 관저고 불러오기 완료! (${startItem ? startItem.name + ':' + startItem.invertEl + 'm' : ''} ${endItem ? endItem.name + ':' + endItem.invertEl + 'm' : ''})`);
+                      onToast(`⚡ 맨홀 DB 관저고 불러오기 완료! (${startItem ? startItem.name + ':' + manholeInvertOut(startItem) + 'm' : ''} ${endItem ? endItem.name + ':' + manholeInvertIn(endItem) + 'm' : ''})`);
                     } else {
                       onToast(`맨홀 DB에서 '${sName || '시점'}' 또는 '${eName || '종점'}' 매칭 데이터를 찾지 못했습니다.`);
                     }
@@ -930,7 +944,7 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
                         setData(prev => ({
                           ...prev,
                           startMhName: val,
-                          startInv: found ? found.invertEl : prev.startInv,
+                          startInv: found ? manholeInvertOut(found) : prev.startInv,
                           secName: `${found ? found.name : val || '시점'} ~ ${prev.endMhName || '종점'}`
                         }));
                         setShowStartMhPopup(true);
@@ -973,11 +987,11 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
                               setData(prev => ({
                                 ...prev,
                                 startMhName: m.name,
-                                startInv: m.invertEl,
+                                startInv: manholeInvertOut(m),
                                 secName: `${m.name} ~ ${prev.endMhName || '종점'}`
                               }));
                               setShowStartMhPopup(false);
-                              onToast(`✓ 시점 '${m.name}' (관저고 ${m.invertEl}m) 적용 완료!`);
+                              onToast(`✓ 시점 '${m.name}' (관저고 ${manholeInvertOut(m)}m) 적용 완료!`);
                             }}
                             style={{
                               padding: '8px 10px',
@@ -1017,7 +1031,8 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
                         setData(prev => ({
                           ...prev,
                           endMhName: val,
-                          endInv: found ? found.invertEl : prev.endInv,
+                          endInv: found ? manholeInvertIn(found) : prev.endInv,
+                          endMhOutInv: found ? manholeInvertOut(found) : prev.endMhOutInv,
                           secName: `${prev.startMhName || '시점'} ~ ${found ? found.name : val || '종점'}`
                         }));
                         setShowEndMhPopup(true);
@@ -1060,11 +1075,12 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
                               setData(prev => ({
                                 ...prev,
                                 endMhName: m.name,
-                                endInv: m.invertEl,
+                                endInv: manholeInvertIn(m),
+                                endMhOutInv: manholeInvertOut(m),
                                 secName: `${prev.startMhName || '시점'} ~ ${m.name}`
                               }));
                               setShowEndMhPopup(false);
-                              onToast(`✓ 종점 '${m.name}' (관저고 ${m.invertEl}m) 적용 완료!`);
+                              onToast(`✓ 종점 '${m.name}' (관저고 ${manholeInvertIn(m)}m) 적용 완료!`);
                             }}
                             style={{
                               padding: '8px 10px',

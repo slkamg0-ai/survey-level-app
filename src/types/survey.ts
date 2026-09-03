@@ -44,7 +44,14 @@ export type TargetHeightMode =
 export interface ManholeMasterItem {
   id: string;
   name: string;      // 맨홀 명칭 (예: MH01, MH02)
-  invertEl: string;  // CAD 설계 관저고 (예: -0.430, 10.250)
+  invertEl: string;  // CAD 설계 관저고 — 유입측 (예: -0.430, 10.250)
+  /**
+   * 유출측 관저고. 낙차맨홀(유입관저고 ≠ 유출관저고)일 때만 입력한다.
+   * 비어 있으면 일반 맨홀로 보고 invertEl을 유출측에도 그대로 쓴다.
+   * 지선 합류 등으로 맨홀 내부에서 관저고가 꺾이는 경우를 담기 위한 필드 —
+   * manholeInvertIn/manholeInvertOut로 읽고, 직접 이 값을 읽지 않는다.
+   */
+  invertElOut?: string;
   remarks?: string;  // 비고 (예: 오수1공구)
   /**
    * CAD 평면 좌표 (m). 거리 계산은 √(Δ²+Δ²) 이라 X·Y 입력 순서가 바뀌어도
@@ -54,6 +61,32 @@ export interface ManholeMasterItem {
   y?: string;
   /** 도면 연장표상 다음 맨홀까지 거리 (m). 좌표 계산값과 대조하는 검산용 */
   distToNext?: string;
+}
+
+/** 맨홀로 흘러 들어오는 쪽(상류 구간의 종점)에서 쓸 관저고 */
+export function manholeInvertIn(item: ManholeMasterItem): string {
+  return item.invertEl;
+}
+
+/**
+ * 맨홀에서 흘러 나가는 쪽(하류 구간의 시점)에서 쓸 관저고.
+ * invertElOut이 비어 있으면 낙차 없는 일반 맨홀이므로 invertEl을 그대로 쓴다.
+ */
+export function manholeInvertOut(item: ManholeMasterItem): string {
+  return item.invertElOut && item.invertElOut.trim() ? item.invertElOut.trim() : item.invertEl;
+}
+
+/**
+ * 유입-유출 관저고 차이(낙차, m). 부호는 (유출 - 유입) — 음수면 유출측이 더 깊다는 뜻.
+ * invertElOut이 없거나 두 값이 사실상 같으면(0.5mm 이내) 낙차맨홀이 아니므로 null.
+ */
+export function manholeDropM(item: ManholeMasterItem): number | null {
+  if (!item.invertElOut || !item.invertElOut.trim()) return null;
+  const a = parseFloat(item.invertEl);
+  const b = parseFloat(item.invertElOut);
+  if (!isFinite(a) || !isFinite(b)) return null;
+  const d = b - a;
+  return Math.abs(d) > 0.0005 ? d : null;
 }
 
 /** 노선 — 맨홀을 상류에서 하류 순서대로 담는다. 연속한 두 맨홀이 한 구간이 된다 */
@@ -88,6 +121,13 @@ export interface TrenchSurveyData {
   endMhName?: string;   // 종점 맨홀명 (예: MH02)
   startInv: string;
   endInv: string;
+  /**
+   * 종점 맨홀 "자신"의 유출관저고(다음 구간으로 나가는 값).
+   * endInv는 이 구간으로 들어오는 유입관저고라 낙차맨홀이면 그 맨홀의 실제
+   * 터파기/바닥 기준(더 낮은 유출값)과 다르다 — 맨홀 자체 측량(MH_* 모드)에서만 쓴다.
+   * 비어 있으면 endInv를 그대로 기준으로 쓴다(낙차 없는 일반 맨홀과 동일).
+   */
+  endMhOutInv?: string;
   len: string;
   dia: string;       // 관경 (m 또는 mm)
   thick: string;     // 관두께 (m)
