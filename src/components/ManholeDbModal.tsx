@@ -261,11 +261,32 @@ export const ManholeDbModal: React.FC<Props> = ({
     onToast(`🎉 ${newItems.length}개 CAD 맨홀 관저고 일괄 등록 완료!`);
   };
 
+  /**
+   * UTF-8로 먼저 시도하고, 유효하지 않은 바이트가 나오면 한글 윈도우 엑셀이 자주 저장하는
+   * CP949/EUC-KR로 다시 디코딩한다. "CSV UTF-8(쉼표로 분리)"이 아니라 그냥 "CSV(쉼표로 분리)"나
+   * "텍스트(탭으로 분리)"로 저장하면 실제로는 CP949 바이트인데, 이걸 UTF-8로 강제로 읽으면
+   * 한글(비고·분기정보 등)이 마름모/물음표로 깨지고, 헤더 인식(예: "분기정보")도 실패해
+   * 컬럼 매핑까지 어긋난다 — 파일명·확장자만으로는 실제 인코딩을 알 수 없어 내용으로 판별한다.
+   */
+  const decodeCsvBuffer = (buf: ArrayBuffer): string => {
+    try {
+      return new TextDecoder('utf-8', { fatal: true }).decode(buf);
+    } catch {
+      try {
+        return new TextDecoder('euc-kr').decode(buf);
+      } catch {
+        return new TextDecoder('utf-8').decode(buf);
+      }
+    }
+  };
+
   // CSV/TXT 파일 읽기 핸들러
   const handleFileUpload = (file: File) => {
     const reader = new FileReader();
     reader.onload = (e) => {
-      const content = e.target?.result as string;
+      const buf = e.target?.result as ArrayBuffer | null;
+      if (!buf) return;
+      const content = decodeCsvBuffer(buf);
       if (!content) return;
 
       const newItems = parseManholeBlock(content);
@@ -282,7 +303,7 @@ export const ManholeDbModal: React.FC<Props> = ({
       saveManholeList(merged);
       onToast(`📁 '${file.name}' 파일에서 ${newItems.length}개 맨홀 DB 등록 완료!`);
     };
-    reader.readAsText(file, 'UTF-8');
+    reader.readAsArrayBuffer(file);
   };
 
   const handleDeleteItem = (id: string, name: string) => {
