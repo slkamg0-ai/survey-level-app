@@ -56,14 +56,20 @@ export interface ManholeBranch {
 export interface ManholeMasterItem {
   id: string;
   name: string;      // 맨홀 명칭 (예: MH01, MH02)
-  invertEl: string;  // CAD 설계 관저고 — 유입측 (예: -0.430, 10.250)
   /**
-   * 유출측 관저고. 낙차맨홀(유입관저고 ≠ 유출관저고)일 때만 입력한다.
-   * 비어 있으면 일반 맨홀로 보고 invertEl을 유출측에도 그대로 쓴다.
+   * CAD 설계 관저고 — 유출측(하류로 나가는 관 기준, 예: -0.430, 10.250).
+   * 종단면도 관례상 "관저고"는 유출측을 따라 연속으로 이어지는 값이라 이걸
+   * 기본(항상 입력) 필드로 둔다. 낙차 없는 일반 맨홀은 유입=유출이라 이 값
+   * 하나로 충분하다.
+   */
+  invertEl: string;
+  /**
+   * 유입측 관저고. 낙차맨홀(유입관저고 ≠ 유출관저고)일 때만 입력한다.
+   * 비어 있으면 일반 맨홀로 보고 invertEl(유출측)을 유입측에도 그대로 쓴다.
    * 지선 합류 등으로 맨홀 내부에서 관저고가 꺾이는 경우를 담기 위한 필드 —
    * manholeInvertIn/manholeInvertOut로 읽고, 직접 이 값을 읽지 않는다.
    */
-  invertElOut?: string;
+  invertElIn?: string;
   remarks?: string;  // 비고 (예: 오수1공구)
   /**
    * CAD 평면 좌표 (m). 거리 계산은 √(Δ²+Δ²) 이라 X·Y 입력 순서가 바뀌어도
@@ -138,29 +144,29 @@ export function branchParseIssues(raw?: string): string[] {
   return issues;
 }
 
-/** 맨홀로 흘러 들어오는 쪽(상류 구간의 종점)에서 쓸 관저고 */
+/**
+ * 맨홀로 흘러 들어오는 쪽(상류 구간의 종점)에서 쓸 관저고.
+ * invertElIn이 비어 있으면 낙차 없는 일반 맨홀이므로 invertEl(유출측)을 그대로 쓴다.
+ */
 export function manholeInvertIn(item: ManholeMasterItem): string {
+  return item.invertElIn && item.invertElIn.trim() ? item.invertElIn.trim() : item.invertEl;
+}
+
+/** 맨홀에서 흘러 나가는 쪽(하류 구간의 시점)에서 쓸 관저고 — 관저고(invertEl) 그 자체. */
+export function manholeInvertOut(item: ManholeMasterItem): string {
   return item.invertEl;
 }
 
 /**
- * 맨홀에서 흘러 나가는 쪽(하류 구간의 시점)에서 쓸 관저고.
- * invertElOut이 비어 있으면 낙차 없는 일반 맨홀이므로 invertEl을 그대로 쓴다.
- */
-export function manholeInvertOut(item: ManholeMasterItem): string {
-  return item.invertElOut && item.invertElOut.trim() ? item.invertElOut.trim() : item.invertEl;
-}
-
-/**
  * 유입-유출 관저고 차이(낙차, m). 부호는 (유출 - 유입) — 음수면 유출측이 더 깊다는 뜻.
- * invertElOut이 없거나 두 값이 사실상 같으면(0.5mm 이내) 낙차맨홀이 아니므로 null.
+ * invertElIn이 없거나 두 값이 사실상 같으면(0.5mm 이내) 낙차맨홀이 아니므로 null.
  */
 export function manholeDropM(item: ManholeMasterItem): number | null {
-  if (!item.invertElOut || !item.invertElOut.trim()) return null;
-  const a = parseFloat(item.invertEl);
-  const b = parseFloat(item.invertElOut);
-  if (!isFinite(a) || !isFinite(b)) return null;
-  const d = b - a;
+  if (!item.invertElIn || !item.invertElIn.trim()) return null;
+  const out = parseFloat(item.invertEl);
+  const inn = parseFloat(item.invertElIn);
+  if (!isFinite(out) || !isFinite(inn)) return null;
+  const d = out - inn;
   return Math.abs(d) > 0.0005 ? d : null;
 }
 

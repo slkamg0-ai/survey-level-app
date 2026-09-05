@@ -26,7 +26,7 @@ export function getSavedManholes(): ManholeMasterItem[] {
             id: String(item.id ?? `mh-${i + 1}`),
             name: String(item.name ?? ''),
             invertEl: String(item.invertEl ?? ''),
-            invertElOut: str(item.invertElOut),
+            invertElIn: str(item.invertElIn),
             remarks: str(item.remarks),
             x: str(item.x),
             y: str(item.y),
@@ -67,13 +67,13 @@ export function getSavedManholes(): ManholeMasterItem[] {
  * 좌표는 6자리 이상 큰 수라 관저고와 섞일 일이 없지만, 열 이름이 있으면 그쪽을 믿는다.
  */
 export interface ColumnMap {
-  name: number; invertEl: number; invertElOut: number; x: number; y: number; dist: number; remarks: number; branches: number;
+  name: number; invertEl: number; invertElIn: number; x: number; y: number; dist: number; remarks: number; branches: number;
 }
 
 const HEADER_PATTERNS: { key: keyof ColumnMap; re: RegExp }[] = [
-  // '유출'을 관저고(invertEl)보다 먼저 확인한다 — "유출관저고"에는 "관저"도 들어있어
-  // 순서가 바뀌면 유출관저고 칸이 일반 관저고로 잘못 잡혀 낙차맨홀 데이터가 아예 안 들어온다.
-  { key: 'invertElOut', re: /유출|out.*(invert|el)|낙차/i },
+  // '유입'을 관저고(invertEl, 이제 유출측 의미)보다 먼저 확인한다 — "유입관저고"에도
+  // "관저"가 들어있어 순서가 바뀌면 유입관저고 칸이 일반 관저고로 잘못 잡힌다.
+  { key: 'invertElIn', re: /유입|in.*(invert|el)/i },
   { key: 'name', re: /맨홀|번호|명칭|^name$|^mh$/i },
   { key: 'invertEl', re: /관저|인버트|invert|^el$|바닥고/i },
   { key: 'x', re: /^x$|x좌표|경도|easting|^e$/i },
@@ -85,7 +85,7 @@ const HEADER_PATTERNS: { key: keyof ColumnMap; re: RegExp }[] = [
 ];
 
 export function detectColumns(cells: string[]): ColumnMap | null {
-  const map: ColumnMap = { name: -1, invertEl: -1, invertElOut: -1, x: -1, y: -1, dist: -1, remarks: -1, branches: -1 };
+  const map: ColumnMap = { name: -1, invertEl: -1, invertElIn: -1, x: -1, y: -1, dist: -1, remarks: -1, branches: -1 };
   let hits = 0;
   cells.forEach((cell, i) => {
     const c = cell.trim();
@@ -107,15 +107,15 @@ export function parseManholeLine(
     const name = at(cols.name).toUpperCase();
     const el = at(cols.invertEl);
     if (!name || !isFinite(parseFloat(el))) return null;
-    const elOut = at(cols.invertElOut);
+    const elIn = at(cols.invertElIn);
     return {
       id: `${Date.now()}_${idx}`,
       name,
       invertEl: el,
-      // 유출관저고는 값이 있고 실제 숫자일 때만 낙차맨홀로 인정한다 —
+      // 유입관저고는 값이 있고 실제 숫자일 때만 낙차맨홀로 인정한다 —
       // 형식이 안 맞는 값을 그대로 넣으면 manholeDropM 등에서 조용히 무시되어
       // "분명 입력했는데 낙차맨홀로 안 잡힌다"는 혼란이 생긴다.
-      invertElOut: elOut && isFinite(parseFloat(elOut)) ? elOut : undefined,
+      invertElIn: elIn && isFinite(parseFloat(elIn)) ? elIn : undefined,
       x: at(cols.x) || undefined,
       y: at(cols.y) || undefined,
       distToNext: at(cols.dist) || undefined,
@@ -200,7 +200,7 @@ export const ManholeDbModal: React.FC<Props> = ({
   const [items, setItems] = useState<ManholeMasterItem[]>(() => getSavedManholes());
   const [mhName, setMhName] = useState('');
   const [invertEl, setInvertEl] = useState('');
-  const [invertElOut, setInvertElOut] = useState('');
+  const [invertElIn, setInvertElIn] = useState('');
   const [remarks, setRemarks] = useState('');
   const [coordX, setCoordX] = useState('');
   const [coordY, setCoordY] = useState('');
@@ -225,7 +225,7 @@ export const ManholeDbModal: React.FC<Props> = ({
       id: Date.now().toString(),
       name: mhName.trim().toUpperCase(),
       invertEl: invertEl.trim(),
-      invertElOut: invertElOut.trim() || undefined,
+      invertElIn: invertElIn.trim() || undefined,
       remarks: remarks.trim() || undefined,
       x: coordX.trim() || undefined,
       y: coordY.trim() || undefined,
@@ -237,7 +237,7 @@ export const ManholeDbModal: React.FC<Props> = ({
     saveManholeList(updated);
     setMhName('');
     setInvertEl('');
-    setInvertElOut('');
+    setInvertElIn('');
     setRemarks('');
     setCoordX('');
     setCoordY('');
@@ -245,7 +245,7 @@ export const ManholeDbModal: React.FC<Props> = ({
     const drop = manholeDropM(newItem);
     onToast(
       drop !== null
-        ? `✅ '${newItem.name}' 등록 완료 — 낙차맨홀 (유입 ${newItem.invertEl} → 유출 ${newItem.invertElOut}m, Δ${Math.abs(drop).toFixed(2)}m)`
+        ? `✅ '${newItem.name}' 등록 완료 — 낙차맨홀 (유입 ${newItem.invertElIn} → 유출 ${newItem.invertEl}m, Δ${Math.abs(drop).toFixed(2)}m)`
         : `✅ '${newItem.name}' 관저고(${newItem.invertEl}m) 등록 완료`
     );
   };
@@ -475,7 +475,7 @@ export const ManholeDbModal: React.FC<Props> = ({
                 <input
                   type="text"
                   inputMode="decimal"
-                  placeholder="관저고 (예: -0.430)"
+                  placeholder="관저고 · 유출측 (예: -0.430)"
                   value={invertEl}
                   onChange={e => setInvertEl(e.target.value)}
                   style={{ height: '36px', fontSize: '13px' }}
@@ -494,10 +494,10 @@ export const ManholeDbModal: React.FC<Props> = ({
                 <input
                   type="text"
                   inputMode="decimal"
-                  placeholder="유출관저고 (낙차맨홀만, 선택)"
-                  value={invertElOut}
-                  onChange={e => setInvertElOut(e.target.value)}
-                  title="유입관저고와 다르면 낙차맨홀로 처리됩니다. 비워두면 일반 맨홀입니다."
+                  placeholder="유입관저고 (낙차맨홀만, 선택)"
+                  value={invertElIn}
+                  onChange={e => setInvertElIn(e.target.value)}
+                  title="관저고(유출측)와 다르면 낙차맨홀로 처리됩니다. 비워두면 일반 맨홀입니다."
                   style={{ height: '36px', fontSize: '13px', gridColumn: 'span 3' }}
                 />
 
@@ -578,7 +578,7 @@ export const ManholeDbModal: React.FC<Props> = ({
                       </span>
                       <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ink)' }}>
                         관저고 EL <b style={{ color: 'var(--ink)', fontSize: '14px' }}>
-                          {drop !== null ? `${item.invertEl} → ${item.invertElOut}` : item.invertEl} m
+                          {drop !== null ? `${item.invertElIn} → ${item.invertEl}` : item.invertEl} m
                         </b>
                       </span>
                       {drop !== null && (
