@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { TrenchSurveyData, TrenchRow, PipeType, ManholePhotoGPS, matchManholeByNameOrNumber, foundationSignature, manholeInvertIn, manholeInvertOut } from '../types/survey';
+import { TrenchSurveyData, TrenchRow, PipeType, ManholePhotoGPS, matchManholeByNameOrNumber, foundationSignature, manholeInvertIn, manholeInvertOut, manholeDropM } from '../types/survey';
 import { buildWarnings, isSpecConfirmed } from '../utils/validation';
 import { classifyMeasurement } from '../utils/judge';
 import { TrenchProfileChart } from './TrenchProfileChart';
@@ -446,6 +446,22 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
     return findManholeByName(allManholesForJunction, name);
   }, [allManholesForJunction, diagramNode, data.startMhName, data.endMhName]);
 
+  /**
+   * 시점·종점 맨홀 자체가 낙차맨홀인지 — 판정에는 이미 반영되고 있지만(manholeInvertIn/Out)
+   * 화면 어디에도 "이 맨홀은 낙차맨홀"이라는 표시가 없어 현장에서 놓치기 쉬웠다.
+   * 값은 맨홀DB의 관저고(유출측)-유입관저고 차이(manholeDropM)를 그대로 쓴다.
+   */
+  const startMhDrop = React.useMemo(() => {
+    if (!isMhMode) return null;
+    const item = findManholeByName(allManholesForJunction, data.startMhName);
+    return item ? manholeDropM(item) : null;
+  }, [allManholesForJunction, isMhMode, data.startMhName]);
+  const endMhDrop = React.useMemo(() => {
+    if (!isMhMode) return null;
+    const item = findManholeByName(allManholesForJunction, data.endMhName);
+    return item ? manholeDropM(item) : null;
+  }, [allManholesForJunction, isMhMode, data.endMhName]);
+
   /** 도면 연장표에 적힌 값 (시점 맨홀의 '다음까지 거리') */
   const sheetLength = React.useMemo(() => {
     const start = findManholeByName(getSavedManholes(), data.startMhName);
@@ -725,6 +741,24 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
               <span className="badge">{data.pipeType === 'PP_DOUBLE' ? 'PP이중벽' : (data.pipeType === 'STORMWATER' ? '우수공' : '직접')} D{data.dia}m</span>
               <span className="badge">시점:{data.startInv}m → 종점:{data.endInv}m</span>
               <span className="badge">L:{data.len}m</span>
+              {startMhDrop !== null && (
+                <span
+                  className="badge"
+                  style={{ borderColor: 'var(--fill)', background: 'var(--fill-bg)', color: 'var(--fill)' }}
+                  title="시점 맨홀 자체가 낙차맨홀입니다 — 유입측과 유출측 관저고가 다릅니다"
+                >
+                  ⚡ 시점 낙차 Δ{Math.abs(startMhDrop).toFixed(2)}m
+                </span>
+              )}
+              {endMhDrop !== null && (
+                <span
+                  className="badge"
+                  style={{ borderColor: 'var(--fill)', background: 'var(--fill-bg)', color: 'var(--fill)' }}
+                  title="종점 맨홀 자체가 낙차맨홀입니다 — 유입측과 유출측 관저고가 다릅니다"
+                >
+                  ⚡ 종점 낙차 Δ{Math.abs(endMhDrop).toFixed(2)}m
+                </span>
+              )}
             </div>
             <span style={{ fontSize: '11px', color: 'var(--primary)', fontWeight: 600, whiteSpace: 'nowrap' }}>⚙️ 변경</span>
           </div>
