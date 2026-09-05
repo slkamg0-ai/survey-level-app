@@ -204,7 +204,7 @@ export interface TrenchSurveyData {
    */
   endMhOutInv?: string;
   len: string;
-  dia: string;       // 관경 (m 또는 mm)
+  dia: string;       // 관경 (m 단위로만 입력 — mm값을 넣으면 validation.ts의 dia-unit 경고가 뜬다. 분기정보(ManholeBranch.dia)의 mm 표기와 혼동 주의)
   thick: string;     // 관두께 (m)
   sand: string;      // 모래기초 (m)
   conc: string;      // 콘크리트기초 (m)

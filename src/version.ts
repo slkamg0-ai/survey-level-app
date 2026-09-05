@@ -1,3 +1,3 @@
-export const APP_VERSION = 'v2.21.6';
-export const APP_BUILD_DATE = '2026-09-04';
-export const APP_CHANGELOG = '맨홀DB CSV 가져오기(파일 업로드)가 UTF-8로 고정돼 있어, 엑셀에서 CP949/EUC-KR로 저장한 CSV를 불러오면 비고·분기정보의 한글이 깨지고 헤더 인식 실패로 분기(합류) 컬럼 매핑까지 어긋나 합류 맨홀 다이어그램이 안 뜨던 문제 수정 — UTF-8 실패 시 CP949로 자동 재판별';
+export const APP_VERSION = 'v2.22.0';
+export const APP_BUILD_DATE = '2026-09-05';
+export const APP_CHANGELOG = '① 야장 표에 실측 레벨고(I.H−실측읽음) 표시 추가 — 판정(편차)만 보이던 것을 실제 관측 표고까지 바로 확인 가능 ② 맨홀DB CSV 가져오기에 유출관저고 컬럼 지원 추가 — 지금까지 CSV로는 낙차맨홀 데이터가 아예 들어올 방법이 없었음(수동 등록만 가능했던 문제) ③ 단위 표기 점검 — 관경 필드 주석이 실제 규칙(m 고정)과 다르게 「m 또는 mm」로 잘못 남아있던 것 수정, 분기정보 표시용 mm 관경과 혼동 여지 명시';

@@ -67,10 +67,13 @@ export function getSavedManholes(): ManholeMasterItem[] {
  * 좌표는 6자리 이상 큰 수라 관저고와 섞일 일이 없지만, 열 이름이 있으면 그쪽을 믿는다.
  */
 export interface ColumnMap {
-  name: number; invertEl: number; x: number; y: number; dist: number; remarks: number; branches: number;
+  name: number; invertEl: number; invertElOut: number; x: number; y: number; dist: number; remarks: number; branches: number;
 }
 
 const HEADER_PATTERNS: { key: keyof ColumnMap; re: RegExp }[] = [
+  // '유출'을 관저고(invertEl)보다 먼저 확인한다 — "유출관저고"에는 "관저"도 들어있어
+  // 순서가 바뀌면 유출관저고 칸이 일반 관저고로 잘못 잡혀 낙차맨홀 데이터가 아예 안 들어온다.
+  { key: 'invertElOut', re: /유출|out.*(invert|el)|낙차/i },
   { key: 'name', re: /맨홀|번호|명칭|^name$|^mh$/i },
   { key: 'invertEl', re: /관저|인버트|invert|^el$|바닥고/i },
   { key: 'x', re: /^x$|x좌표|경도|easting|^e$/i },
@@ -82,13 +85,14 @@ const HEADER_PATTERNS: { key: keyof ColumnMap; re: RegExp }[] = [
 ];
 
 export function detectColumns(cells: string[]): ColumnMap | null {
-  const map: ColumnMap = { name: -1, invertEl: -1, x: -1, y: -1, dist: -1, remarks: -1, branches: -1 };
+  const map: ColumnMap = { name: -1, invertEl: -1, invertElOut: -1, x: -1, y: -1, dist: -1, remarks: -1, branches: -1 };
   let hits = 0;
   cells.forEach((cell, i) => {
     const c = cell.trim();
-    HEADER_PATTERNS.forEach(p => {
-      if (map[p.key] === -1 && p.re.test(c)) { map[p.key] = i; hits++; }
-    });
+    // 한 칸이 여러 패턴에 동시에 걸리지 않도록 첫 매치에서 멈춘다(위 배열 순서가 우선순위).
+    for (const p of HEADER_PATTERNS) {
+      if (map[p.key] === -1 && p.re.test(c)) { map[p.key] = i; hits++; break; }
+    }
   });
   // 맨홀명과 관저고를 못 찾으면 헤더가 아니다
   return hits >= 2 && map.name >= 0 && map.invertEl >= 0 ? map : null;
@@ -103,10 +107,15 @@ export function parseManholeLine(
     const name = at(cols.name).toUpperCase();
     const el = at(cols.invertEl);
     if (!name || !isFinite(parseFloat(el))) return null;
+    const elOut = at(cols.invertElOut);
     return {
       id: `${Date.now()}_${idx}`,
       name,
       invertEl: el,
+      // 유출관저고는 값이 있고 실제 숫자일 때만 낙차맨홀로 인정한다 —
+      // 형식이 안 맞는 값을 그대로 넣으면 manholeDropM 등에서 조용히 무시되어
+      // "분명 입력했는데 낙차맨홀로 안 잡힌다"는 혼란이 생긴다.
+      invertElOut: elOut && isFinite(parseFloat(elOut)) ? elOut : undefined,
       x: at(cols.x) || undefined,
       y: at(cols.y) || undefined,
       distToNext: at(cols.dist) || undefined,

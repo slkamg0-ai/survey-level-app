@@ -1678,6 +1678,11 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
                   judge.status === 'cut' ? <>▼{judge.cm!.toFixed(1)} <small>더파기</small></> :
                   judge.status === 'fill' ? <>▲{judge.cm!.toFixed(1)} <small>되메움</small></> :
                   '·';
+                // 실측 레벨고 — 읽음 = I.H − 표고 이므로 표고 = I.H − 실측읽음.
+                // 판정(목표와의 차이)만 보면 "그 점이 실제로 몇 EL인지"를 알 수 없어
+                // 다른 도면·성과와 대조할 때 매번 암산해야 했다 — 여기서 바로 보여준다.
+                const measVal = rawMeas === '' ? NaN : parseFloat(rawMeas);
+                const measuredEl = computed.ih !== null && isFinite(measVal) ? computed.ih - measVal : null;
 
                 return (
                   <React.Fragment key={key}>
@@ -1706,6 +1711,11 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
                       </td>
                       <td className="c">
                         <span className={judgeClass}>{judgeContent}</span>
+                        {measuredEl !== null && (
+                          <div style={{ fontSize: '10px', color: 'var(--ink-3)', marginTop: '2px', whiteSpace: 'nowrap' }}>
+                            EL {fmt(measuredEl)}
+                          </div>
+                        )}
                       </td>
                     </tr>
 
@@ -1751,6 +1761,12 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
                             </dd>
                             <dt>목표읽음</dt>
                             <dd>{r.target === null ? '기계고 입력 필요' : `${fmt(r.target)} m = I.H − 검측목표고`}</dd>
+                            <dt>실측 레벨고</dt>
+                            <dd>
+                              {measuredEl === null
+                                ? (computed.ih === null ? '기계고 입력 필요' : '실측읽음 입력 필요')
+                                : `${fmt(measuredEl)} m = I.H(${fmt(computed.ih)}) − 실측읽음(${fmt(measVal, 3)})`}
+                            </dd>
                           </dl>
                         </td>
                       </tr>
