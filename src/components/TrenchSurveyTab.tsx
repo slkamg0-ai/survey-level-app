@@ -462,6 +462,29 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
     return item ? manholeDropM(item) : null;
   }, [allManholesForJunction, isMhMode, data.endMhName]);
 
+  /**
+   * 낙차맨홀 유출관저고 동기화 검사 — endMhOutInv는 "⚡ CAD 관저고 자동 불러오기"나 맨홀명
+   * 입력 자동완성을 거쳐야만 채워지는 별도 필드다. 예전에 저장해둔 구간이거나 맨홀명을
+   * 손으로만 입력해둔 경우, DB에는 낙차맨홀로 기록돼 있어도 계산에는 반영되지 않을 수
+   * 있다 — 이때 MH_CUT류 터파기고가 (실제보다 얕은) 유입관저고 기준으로 계산되는데
+   * 화면 어디에도 티가 나지 않아 위험하다. 여기서 그 불일치를 잡아 경고로 노출한다.
+   */
+  const endMhItem = React.useMemo(
+    () => findManholeByName(allManholesForJunction, data.endMhName),
+    [allManholesForJunction, data.endMhName]
+  );
+  const endMhOutSync = React.useMemo(() => {
+    if (!isMhMode || !endMhItem || endMhDrop === null) return null;
+    const trueOut = num(manholeInvertOut(endMhItem));
+    const curOut = num(data.endMhOutInv);
+    if (trueOut === null) return null;
+    if (curOut === null || Math.abs(curOut - trueOut) > 0.0005) {
+      const effectiveNow = curOut ?? num(data.endInv) ?? trueOut; // 지금 실제 계산에 쓰이는 값(폴백 포함)
+      return { trueOut, curOut, delta: Math.abs(effectiveNow - trueOut) };
+    }
+    return null;
+  }, [isMhMode, endMhItem, endMhDrop, data.endMhOutInv, data.endInv]);
+
   /** 도면 연장표에 적힌 값 (시점 맨홀의 '다음까지 거리') */
   const sheetLength = React.useMemo(() => {
     const start = findManholeByName(getSavedManholes(), data.startMhName);
@@ -1673,6 +1696,36 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
           </button>
         </h2>
 
+        {endMhOutSync && (
+          <div
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px',
+              flexWrap: 'wrap', margin: '0 0 10px', padding: '10px 12px',
+              background: 'var(--cut-bg)', border: '1px solid var(--cut)', borderRadius: '8px',
+              color: 'var(--cut)', fontSize: '12px', fontWeight: 600
+            }}
+          >
+            <span>
+              ⚠️ 종점 맨홀 '{data.endMhName}'은(는) 낙차맨홀인데 유출관저고가 계산에 반영되지
+              않았습니다 — 지금은 유입관저고 기준으로 계산되어 터파기고가 실제보다 약{' '}
+              {endMhOutSync.delta.toFixed(2)}m 얕게 나올 수 있습니다.
+            </span>
+            <button
+              type="button"
+              className="btn"
+              style={{ fontSize: '11px', padding: '4px 10px', minWidth: 'auto', background: 'var(--cut)', color: '#fff', border: 'none' }}
+              onClick={() => {
+                if (!endMhItem) return;
+                const fixed = manholeInvertOut(endMhItem);
+                setData(prev => ({ ...prev, endMhOutInv: fixed }));
+                onToast(`✓ '${endMhItem.name}' 유출관저고(${fixed}m) 다시 불러왔습니다`);
+              }}
+            >
+              지금 다시 불러오기
+            </button>
+          </div>
+        )}
+
         <div className="table-wrap">
           <table>
             <thead>
@@ -1730,7 +1783,19 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
                       }}
                       style={{ cursor: 'pointer' }}
                     >
-                      <td className="sta c">{label}</td>
+                      <td className="sta c">
+                        {label}
+                        {isMhMode && r.node === 'start' && startMhDrop !== null && (
+                          <div style={{ fontSize: '9.5px', fontWeight: 700, marginTop: '2px', color: 'var(--fill)' }}>
+                            ⚡낙차맨홀
+                          </div>
+                        )}
+                        {isMhMode && r.node === 'end' && endMhDrop !== null && (
+                          <div style={{ fontSize: '9.5px', fontWeight: 700, marginTop: '2px', color: endMhOutSync ? 'var(--cut)' : 'var(--fill)' }}>
+                            {endMhOutSync ? '⚠️미적용!' : '⚡낙차·유출적용'}
+                          </div>
+                        )}
+                      </td>
                       <td className="n grade">{fmt(r.cutEl)}</td>
                       <td className="n target">{r.target === null ? '—' : fmt(r.target)}</td>
                       <td className="c">

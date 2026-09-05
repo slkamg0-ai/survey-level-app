@@ -1,3 +1,3 @@
-export const APP_VERSION = 'v2.22.3';
+export const APP_VERSION = 'v2.22.4';
 export const APP_BUILD_DATE = '2026-09-05';
-export const APP_CHANGELOG = '앱 아이콘 새로 디자인 — 스타프(레벨 눈금)와 조준선을 형상화한 아이콘으로 교체. 폰 홈화면 바로가기, iOS/Android PWA 설치 아이콘, 파비콘, 사파리 고정탭 아이콘까지 전부 교체';
+export const APP_CHANGELOG = '낙차맨홀 유출관저고 미반영 경고 추가 — 종점 맨홀이 낙차맨홀인데 「유출관저고」가 계산에 반영되지 않은 경우(옛 저장 구간·수동 입력 등) 야장 표 위에 경고 배너와 「지금 다시 불러오기」 버튼을 표시. 야장 표의 시점·종점 행에도 낙차맨홀 여부와 적용 상태를 바로 보이게 태그 추가';
