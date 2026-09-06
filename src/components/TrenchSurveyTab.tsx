@@ -77,9 +77,25 @@ export const formatStationX = (x: number | string): string => {
 
 const measKey = (spanKey: string, mode: string, x: number | string) => `${spanKey}|${mode}@${formatStationX(x)}`;
 
-/** 노선 구간을 구분하는 키. 단일 구간 측량은 'single' */
-const spanKeyOf = (d: TrenchSurveyData) =>
-  d.routeId && d.spanIndex !== undefined ? `${d.routeId}#${d.spanIndex}` : 'single';
+/** 노선 구간 또는 맨홀 구간을 구분하는 고유 키. 지정 없는 단일 측량은 'single' */
+export const spanKeyOf = (d: TrenchSurveyData): string => {
+  if (d.routeId && d.spanIndex !== undefined) {
+    return `${d.routeId}#${d.spanIndex}`;
+  }
+  const s = (d.startMhName || '').trim();
+  const e = (d.endMhName || '').trim();
+  if (s && e) {
+    return `${s}->${e}`;
+  }
+  if (s || e) {
+    return `${s || '시점'}->${e || '종점'}`;
+  }
+  const sec = (d.secName || '').trim();
+  if (sec) {
+    return `sec:${sec}`;
+  }
+  return 'single';
+};
 
 /** 저장·불러오기로 들어온 데이터를 항상 기본값과 병합하고 타입을 정리한다 */
 const normalize = (raw: unknown): TrenchSurveyData => {
