@@ -77,71 +77,158 @@ body {
 .topbar-in {
   max-width: 680px;
   margin: 0 auto;
-  padding: 10px 14px 9px;
+  padding: 8px 12px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Row 1: Brand & Top Action Buttons */
+.topbar-main {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
 }
 
 .brand {
   display: flex;
-  flex-direction: column;
-  gap: 1px;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
+  flex-shrink: 0;
 }
 
 .brand b {
-  font-size: 16px;
-  font-weight: 750;
-  letter-spacing: -.01em;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -.02em;
   color: var(--ink);
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
+  white-space: nowrap;
 }
 
-.brand span {
-  font-family: var(--mono);
+.brand-ver {
+  font-size: 9.5px;
+  font-weight: 700;
+  background: var(--primary-bg);
+  color: var(--primary);
+  padding: 1px 5px;
+  border-radius: 4px;
+  margin-left: 2px;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.topbtn {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 6px;
+  padding: 4px 6px;
+  color: var(--ink);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font: 600 11px var(--sans);
+  min-height: 28px;
+  white-space: nowrap;
+}
+
+.topbtn:active {
+  background: var(--surface-2);
+}
+
+.topbtn-ico {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.topbtn-label {
   font-size: 10.5px;
-  letter-spacing: .08em;
+  font-weight: 600;
+}
+
+/* Row 2: Section Info & Machine Height (I.H) */
+.topbar-sub {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+
+.topbar-sec {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  flex: 1;
+}
+
+.sec-tag {
+  font-size: 9.5px;
+  font-weight: 700;
   color: var(--ink-3);
-  text-transform: uppercase;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 1px 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.sec-name {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .ih {
-  text-align: right;
-  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
 }
 
 .ih-label {
-  display: block;
   font-family: var(--mono);
   font-size: 9.5px;
-  letter-spacing: .12em;
+  letter-spacing: .05em;
   color: var(--ink-3);
+  white-space: nowrap;
 }
 
 .ih-val {
-  display: block;
   font-family: var(--mono);
-  font-size: 24px;
-  font-weight: 700;
-  line-height: 1.1;
+  font-size: 16px;
+  font-weight: 800;
   letter-spacing: -.02em;
   font-variant-numeric: tabular-nums;
-  color: var(--ink);
+  color: var(--primary);
+  white-space: nowrap;
 }
 
 .ih-sub {
-  display: block;
   font-family: var(--mono);
   font-size: 10px;
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .staff-rule {
@@ -1260,34 +1347,11 @@ tr.detail dd { margin: 0; color: var(--ink); font-variant-numeric: tabular-nums;
   cursor: pointer;
 }
 
-/* ── 상단 도구 버튼 ─────────────────────────────── */
-.topbtn {
-  flex: none;
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 7px 8px;
-  color: var(--ink);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font: 600 11px var(--sans);
-  min-height: 36px;
-}
-
-.topbtn-ico { font-size: 13px; line-height: 1; }
-
-/* 브랜드 문구가 줄바꿈으로 무너지지 않게 */
-.brand b { white-space: nowrap; }
-
-/* 좁은 화면에서는 버튼 라벨을 접고 아이콘만 남긴다 */
+/* 좁은 화면에서는 버튼 라벨을 접고 컴팩트 아이콘만 남긴다 */
 @media (max-width: 480px) {
   .topbtn-label { display: none; }
-  .topbtn { padding: 7px 9px; }
-  .topbtn-ico { font-size: 15px; }
-  .topbar-in { gap: 6px; }
-  .ih-val { font-size: 21px; }
+  .topbtn { padding: 4px 6px; min-height: 28px; }
+  .topbtn-ico { font-size: 13px; }
 }
 
 /* ── 전체 백업 ─────────────────────────────────── */

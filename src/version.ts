@@ -1,3 +1,3 @@
-export const APP_VERSION = 'v3.1.0';
+export const APP_VERSION = 'v3.2.0';
 export const APP_BUILD_DATE = '2026-09-06';
-export const APP_CHANGELOG = '평면도 지도 뷰어 재진입 버그 원천 해결(새로고침 없이 즉시 표시), 시점·종점 2개 맨홀 지도 동시 선택 및 관로 연결선(연장 라벨) 시각화, 야장 원터치 일괄 적용 바 탑재';
+export const APP_CHANGELOG = '상단 헤더 모바일 2행 반응형 전면 개편(삼성 갤럭시 S25 등 스마트폰 해상도 타이틀-기계고 글자 겹침 0% 해결, 컴팩트 아이콘 메뉴), 지도 맨홀 선택 시 야장 즉시 실시간 동기화 보장';

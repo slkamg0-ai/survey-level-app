@@ -106,17 +106,13 @@ export const SiteMapModal: React.FC<Props> = ({
     localStorage.setItem(STORAGE_MAP_CRS, crs);
   }, [crs]);
 
-  // 초기 시점/종점 맨홀 동기화
+  // 초기 시점/종점 맨홀 동기화 (야장 데이터와 100% 동기화)
   useEffect(() => {
     if (isOpen) {
-      if (initialStartMhName && (!selectedStartMh || selectedStartMh.name !== initialStartMhName)) {
-        const found = manholes.find(m => m.name === initialStartMhName);
-        if (found) setSelectedStartMh(found);
-      }
-      if (initialEndMhName && (!selectedEndMh || selectedEndMh.name !== initialEndMhName)) {
-        const found = manholes.find(m => m.name === initialEndMhName);
-        if (found) setSelectedEndMh(found);
-      }
+      const currentStart = manholes.find(m => m.name === initialStartMhName) || null;
+      const currentEnd = manholes.find(m => m.name === initialEndMhName) || null;
+      setSelectedStartMh(currentStart);
+      setSelectedEndMh(currentEnd);
     }
   }, [isOpen, initialStartMhName, initialEndMhName, manholes]);
 
@@ -328,9 +324,9 @@ export const SiteMapModal: React.FC<Props> = ({
         : '';
 
       const popupContent = document.createElement('div');
-      popupContent.style.minWidth = '170px';
+      popupContent.style.minWidth = '180px';
       popupContent.innerHTML = `
-        <div style="font-weight:700; font-size:14px; margin-bottom:4px; color:#1C2B63;">
+        <div style="font-weight:750; font-size:14px; margin-bottom:4px; color:#1C2B63;">
           ${m.name} ${m.remarks ? `<small style="font-size:11px; color:#666;">(${m.remarks})</small>` : ''}
         </div>
         <div style="font-size:12px; margin-bottom:2px;">• 유출관저고: <b>${m.invertEl} m</b></div>
@@ -339,11 +335,14 @@ export const SiteMapModal: React.FC<Props> = ({
         <div style="display:flex; gap:6px; margin-top:8px;">
           <button id="btn-pick-start-${m.id}" style="
             flex:1; padding:7px 4px; font-size:11px; font-weight:700; background:#2B4FD1; color:white; border:none; border-radius:6px; cursor:pointer;
-          ">📍 시점 지정</button>
+          ">📍 시점 적용</button>
           <button id="btn-pick-end-${m.id}" style="
             flex:1; padding:7px 4px; font-size:11px; font-weight:700; background:#1F9D63; color:white; border:none; border-radius:6px; cursor:pointer;
-          ">🎯 종점 지정</button>
+          ">🎯 종점 적용</button>
         </div>
+        <button id="btn-goto-trench-${m.id}" style="
+          width:100%; margin-top:6px; padding:6px; font-size:11px; font-weight:700; background:var(--surface-2); color:var(--ink); border:1px solid var(--line); border-radius:6px; cursor:pointer;
+        ">📋 야장 화면으로 이동</button>
       `;
 
       marker.bindPopup(popupContent);
@@ -351,18 +350,26 @@ export const SiteMapModal: React.FC<Props> = ({
       marker.on('popupopen', () => {
         const btnStart = document.getElementById(`btn-pick-start-${m.id}`);
         const btnEnd = document.getElementById(`btn-pick-end-${m.id}`);
+        const btnGo = document.getElementById(`btn-goto-trench-${m.id}`);
         if (btnStart) {
           btnStart.onclick = () => {
             setSelectedStartMh(m);
+            if (onSelectManhole) onSelectManhole('start', m);
             map.closePopup();
-            onToast(`'${m.name}' 맨홀을 [시점]으로 지정했습니다. 이어서 종점 맨홀을 선택하세요.`);
+            onToast(`'${m.name}' 맨홀을 야장 [시점]으로 적용했습니다`);
           };
         }
         if (btnEnd) {
           btnEnd.onclick = () => {
             setSelectedEndMh(m);
+            if (onSelectManhole) onSelectManhole('end', m);
             map.closePopup();
-            onToast(`'${m.name}' 맨홀을 [종점]으로 지정했습니다.`);
+            onToast(`'${m.name}' 맨홀을 야장 [종점]으로 적용했습니다`);
+          };
+        }
+        if (btnGo) {
+          btnGo.onclick = () => {
+            onClose();
           };
         }
       });
@@ -616,11 +623,15 @@ export const SiteMapModal: React.FC<Props> = ({
       style={{
         position: 'fixed',
         inset: 0,
+        width: '100vw',
+        height: '100dvh',
+        maxHeight: '100dvh',
         backgroundColor: 'rgba(0,0,0,0.7)',
         backdropFilter: 'blur(4px)',
         zIndex: 105,
         display: isOpen ? 'flex' : 'none',
-        flexDirection: 'column'
+        flexDirection: 'column',
+        overflow: 'hidden'
       }}
     >
       {/* 1. 상단 제어 헤더 */}
@@ -1009,12 +1020,13 @@ export const SiteMapModal: React.FC<Props> = ({
         style={{
           background: 'var(--surface)',
           borderTop: '1px solid var(--line)',
-          padding: '10px 14px',
+          padding: '8px 12px calc(8px + env(safe-area-inset-bottom, 0px))',
           display: 'flex',
           flexDirection: 'column',
-          gap: '8px',
+          gap: '6px',
           boxShadow: '0 -4px 16px rgba(0,0,0,0.15)',
-          zIndex: 1000
+          zIndex: 1000,
+          flexShrink: 0
         }}
       >
         <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch' }}>
