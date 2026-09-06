@@ -322,7 +322,7 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
     const sand = num(data.sand) || 0;
     const conc = num(data.conc) || 0;
     const agg = num(data.aggregate) || 0;
-    // 0을 넣었는데 조용히 0.200으로 바뀌면 맨홀 터파기 바닥고가 20cm 깊어진다.
+    // 0을 넣었는데 조용히 0.200으로 바뀌면 맨홀 터파기 바닥고가 0.200m 깊어진다.
     // 입력한 값을 그대로 쓰고, 0이면 경고로 알린다 (기본 0.200은 DEFAULT_DATA가 제공)
     const mhBase = num(data.mhBase) ?? 0;
     const dia = num(data.dia);
@@ -635,7 +635,7 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
         ? ['맨홀 바닥두께', c.mhBase, '콘크리트기초', c.conc, '골재/잡석', c.agg]
         : ['연장', c.L !== null ? c.L : '', '관경', c.dia !== null ? c.dia : '', '관두께', c.t, '모래기초', c.sand, '콘크리트기초', c.conc, '골재/잡석', c.agg],
       [],
-      [isMhCsv ? '맨홀' : '측점', '누가거리(m)', `${modeName}(EL)`, '관저고(EL)', '목표읽음(m)', '실측읽음(m)', '편차(cm)', '판정']
+      [isMhCsv ? '맨홀' : '측점', '누가거리(m)', `${modeName}(EL)`, '관저고(EL)', '목표읽음(m)', '실측읽음(m)', '편차(m)', '판정']
     ];
 
     const body = csvRows.map((r, i) => {
@@ -660,8 +660,8 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
       // E열 (목표읽음 m): 기계고 I.H($B$4) - 목표 EL(C열)
       const targetFormula = `=IF(OR(ISBLANK($B$4), ISBLANK(C${rNum})), "", $B$4 - C${rNum})`;
 
-      // G열 (편차 cm): (실측F - 목표E) * 100
-      const devFormula = `=IF(OR(ISBLANK(F${rNum}), ISBLANK(E${rNum})), "", ROUND((F${rNum} - E${rNum}) * 100, 1))`;
+      // G열 (편차 m): 실측F - 목표E (0.001m 단위)
+      const devFormula = `=IF(OR(ISBLANK(F${rNum}), ISBLANK(E${rNum})), "", ROUND(F${rNum} - E${rNum}, 3))`;
 
       // H열 (판정): ABS((F - E) * 1000) <= 허용오차 H4 이면 적정, F > E 되메움, 아니면 더파기
       // ROUND 를 씌워야 허용오차와 정확히 같은 값이 부동소수점 오차로 부적합이 되지 않는다
@@ -1407,7 +1407,7 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
                 <input
                   type="text"
                   inputMode="decimal"
-                  placeholder="0.200 (20cm)"
+                  placeholder="0.200"
                   value={data.mhBase !== undefined ? data.mhBase : '0.200'}
                   onChange={e => setData({ ...data, mhBase: e.target.value })}
                 />
@@ -1800,9 +1800,9 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
                 const judge = classifyMeasurement(rawMeas, r.target, computed.tol);
                 const judgeClass = `judge ${judge.status}`;
                 const judgeContent: React.ReactNode =
-                  judge.status === 'ok' ? <>적정 <small>{judge.cm!.toFixed(1)}</small></> :
-                  judge.status === 'cut' ? <>▼{judge.cm!.toFixed(1)} <small>더파기</small></> :
-                  judge.status === 'fill' ? <>▲{judge.cm!.toFixed(1)} <small>되메움</small></> :
+                  judge.status === 'ok' ? <>적정 <small>{judge.diffM !== null ? `${judge.diffM.toFixed(3)}m` : ''}</small></> :
+                  judge.status === 'cut' ? <>▼{judge.diffM!.toFixed(3)}m <small>더파기</small></> :
+                  judge.status === 'fill' ? <>▲{judge.diffM!.toFixed(3)}m <small>되메움</small></> :
                   '·';
                 // 실측 레벨고 — 읽음 = I.H − 표고 이므로 표고 = I.H − 실측읽음.
                 // 판정(목표와의 차이)만 보면 "그 점이 실제로 몇 EL인지"를 알 수 없어

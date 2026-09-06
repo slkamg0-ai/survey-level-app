@@ -35,6 +35,7 @@ describe('classifyMeasurement — 적정 판정', () => {
     const r = classifyMeasurement(String(TARGET), TARGET, TOL);
     expect(r.status).toBe('ok');
     expect(r.devM).toBe(0);
+    expect(r.diffM).toBe(0);
     expect(r.cm).toBe(0);
   });
 
@@ -66,6 +67,7 @@ describe('classifyMeasurement — 더파기 / 되메움', () => {
     const r = classifyMeasurement(String(TARGET - 0.10), TARGET, TOL);
     expect(r.status).toBe('cut');
     expect(r.devM).toBeCloseTo(-0.10, 6);
+    expect(r.diffM).toBeCloseTo(0.10, 6);
     expect(r.cm).toBeCloseTo(10, 6);
   });
 
@@ -73,6 +75,7 @@ describe('classifyMeasurement — 더파기 / 되메움', () => {
     const r = classifyMeasurement(String(TARGET + 0.10), TARGET, TOL);
     expect(r.status).toBe('fill');
     expect(r.devM).toBeCloseTo(0.10, 6);
+    expect(r.diffM).toBeCloseTo(0.10, 6);
     expect(r.cm).toBeCloseTo(10, 6);
   });
 

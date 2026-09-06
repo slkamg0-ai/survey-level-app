@@ -11,11 +11,13 @@ export interface JudgeResult {
   status: JudgeStatus;
   /** 실측읽음 − 목표읽음 (m). 판정 없음이면 null */
   devM: number | null;
-  /** |devM| (cm) */
+  /** |devM| (m 단위 차이 절대값) */
+  diffM: number | null;
+  /** |devM| (cm) - 하위 호환용 */
   cm: number | null;
 }
 
-const NONE: JudgeResult = { status: 'none', devM: null, cm: null };
+const NONE: JudgeResult = { status: 'none', devM: null, diffM: null, cm: null };
 
 export function classifyMeasurement(
   rawMeas: string | undefined,
@@ -26,10 +28,11 @@ export function classifyMeasurement(
   if (!rawMeas || !isFinite(measVal) || target === null) return NONE;
 
   const devM = measVal - target;
-  const cm = Math.abs(devM) * 100;
+  const diffM = Math.abs(devM);
+  const cm = diffM * 100;
 
   // 허용오차와 정확히 같은 값이 부동소수점 오차로 부적합이 되지 않게 한다
   // (4.929 - 4.899 = 0.03000000000000025 > 0.03)
-  if (Math.abs(devM) <= tol + 1e-9) return { status: 'ok', devM, cm };
-  return { status: devM < 0 ? 'cut' : 'fill', devM, cm };
+  if (Math.abs(devM) <= tol + 1e-9) return { status: 'ok', devM, diffM, cm };
+  return { status: devM < 0 ? 'cut' : 'fill', devM, diffM, cm };
 }

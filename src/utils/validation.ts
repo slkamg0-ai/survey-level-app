@@ -213,7 +213,7 @@ export function buildWarnings(data: TrenchSurveyData, c: ComputedLike): SurveyWa
         id: 'tol-loose',
         level: 'warn',
         title: `허용오차가 ±${tolMm} mm입니다`,
-        detail: '10cm를 넘는 허용오차는 검측 의미가 없습니다.'
+        detail: '0.100m(100mm)를 넘는 허용오차는 검측 의미가 없습니다.'
       });
     }
   }

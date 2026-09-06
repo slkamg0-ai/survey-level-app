@@ -11,7 +11,7 @@ import { classifyMeasurement, JudgeStatus } from '../utils/judge';
  * 두 그림을 함께 둔다.
  *   1) 종단면 프로파일 — 계획선(검측 목표 EL) 위에 실측 표고를 점으로 찍는다.
  *      계획선은 판정 색(적정/더파기/되메움)과 겹치지 않도록 강조색을 쓴다.
- *   2) 편차 막대 — 측점마다 목표 대비 편차(cm)를 막대로 세워 크기를 비교한다.
+ *   2) 편차 막대 — 측점마다 목표 대비 편차(m)를 막대로 세워 크기를 비교한다.
  *
  * 실측하지 않은 측점은 점을 찍지 않고 계획선만 지나간다 — 아직 안 잰 것을
  * "적정"처럼 보이게 하지 않기 위해서다. 판정은 표와 같은 classifyMeasurement 를 써서
@@ -79,14 +79,14 @@ export const TrenchProfileChart: React.FC<Props> = ({ rows, meas, measKeyOf, tol
   const measuredPts = points.filter(p => p.measuredEl !== null);
 
   /* ── 2) 편차 막대 ───────────────────────────────── */
-  const cmVals = points.map(p => (p.judge.cm === null ? 0 : p.judge.cm));
-  const cmMax = Math.max(20, ...cmVals) * 1.15;
+  const diffVals = points.map(p => (p.judge.diffM === null ? 0 : p.judge.diffM));
+  const diffMax = Math.max(0.20, ...diffVals) * 1.15; // 최소 0.200m 범위 확보
   const barTop = BAR_PAD_T;
   const barBot = BAR_H - BAR_PAD_B;
   const zeroY = (barTop + barBot) / 2;
-  const cmScale = (barBot - barTop) / 2 / cmMax;
+  const diffScale = (barBot - barTop) / 2 / diffMax;
   const barW = Math.min(20, Math.max(6, ((W - PAD_L - PAD_R) / points.length) * 0.55));
-  const tolPx = tol * 100 * cmScale;
+  const tolPx = tol * diffScale;
 
   const measuredCount = measuredPts.length;
 
@@ -147,8 +147,8 @@ export const TrenchProfileChart: React.FC<Props> = ({ rows, meas, measKeyOf, tol
             <line x1={PAD_L} y1={zeroY} x2={W - PAD_R} y2={zeroY} stroke="var(--line)" strokeWidth="1" />
 
             {points.map((p, i) => {
-              if (p.judge.cm === null) return null;
-              const h = Math.min(barBot - barTop, p.judge.cm * cmScale);
+              if (p.judge.diffM === null) return null;
+              const h = Math.min(barBot - barTop, p.judge.diffM * diffScale);
               const up = p.judge.devM! < 0; // 더파기 → 막대를 위로
               const y = up ? zeroY - h : zeroY;
               const x = px(p.x) - barW / 2;
@@ -167,7 +167,7 @@ export const TrenchProfileChart: React.FC<Props> = ({ rows, meas, measKeyOf, tol
           </svg>
         )}
         <div className="profile-legend-row">
-          <span><i className="profile-swatch" style={{ background: 'var(--ok-bg)' }} />허용오차 ±{(tol * 100).toFixed(0)}cm</span>
+          <span><i className="profile-swatch" style={{ background: 'var(--ok-bg)' }} />허용오차 ±{tol.toFixed(3)}m</span>
           <span className="profile-hint">위쪽=더파기(굴착 부족) · 아래쪽=되메움(과굴착)</span>
         </div>
       </div>
