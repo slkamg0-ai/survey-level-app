@@ -646,36 +646,44 @@ export const SiteMapModal: React.FC<Props> = ({
           zIndex: 10
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Compass size={20} className="text-blue-600" />
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <span style={{ fontWeight: 800, fontSize: '15px', color: 'var(--ink)' }}>
-              3백만㎡ 현장 평면도 지도 뷰어
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+          <Compass size={20} className="text-blue-600" style={{ flexShrink: 0 }} />
+          <div style={{ display: 'flex', flexDirection: 'column', whiteSpace: 'nowrap' }}>
+            <span style={{ fontWeight: 800, fontSize: '15px', color: 'var(--ink)', lineHeight: 1.2 }}>
+              지도뷰어
             </span>
-            <span style={{ fontSize: '10.5px', color: 'var(--ink-2)' }}>
-              좌표계: <b>{crs}</b> · 맨홀 {manholes.length}개소 표시
+            <span
+              style={{ fontSize: '11px', color: 'var(--ink-2)', lineHeight: 1.3, cursor: 'pointer' }}
+              onClick={() => {
+                setActiveTab('crs');
+                setShowConfigPanel(true);
+              }}
+              title="좌표계 설정"
+            >
+              좌표계: <b style={{ color: 'var(--primary)' }}>{crs}</b>
             </span>
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
           {/* 도면 업로드 버튼 */}
           <label
             className="btn mini"
             style={{
-              padding: '6px 10px',
+              padding: '6px 8px',
               fontSize: '11px',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '4px',
+              whiteSpace: 'nowrap',
               background: blueprintUrl ? 'var(--ok-bg)' : 'var(--primary-bg)',
               color: blueprintUrl ? 'var(--ok)' : 'var(--primary)',
               borderColor: blueprintUrl ? 'var(--ok)' : 'var(--primary)'
             }}
           >
             <Upload size={13} />
-            {blueprintUrl ? '도면 교체' : '📐 평면도 업로드'}
+            {blueprintUrl ? '도면 교체' : '평면도 업로드'}
             <input
               type="file"
               accept="image/png,image/jpeg,image/webp"
@@ -692,7 +700,7 @@ export const SiteMapModal: React.FC<Props> = ({
           <button
             type="button"
             className={`btn mini ${showConfigPanel ? 'primary' : ''}`}
-            style={{ padding: '6px 10px', fontSize: '11px' }}
+            style={{ padding: '6px 8px', fontSize: '11px', whiteSpace: 'nowrap' }}
             onClick={() => setShowConfigPanel(!showConfigPanel)}
           >
             <Sliders size={13} /> 정합·옵션
@@ -702,12 +710,16 @@ export const SiteMapModal: React.FC<Props> = ({
           <button
             type="button"
             onClick={onClose}
+            aria-label="지도 닫기"
             style={{
               background: 'none',
               border: 'none',
               color: 'var(--ink-2)',
               cursor: 'pointer',
-              padding: '6px'
+              padding: '4px 6px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
             }}
           >
             <X size={22} />

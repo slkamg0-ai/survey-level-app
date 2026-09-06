@@ -1,3 +1,3 @@
-export const APP_VERSION = 'v3.2.1';
+export const APP_VERSION = 'v3.2.2';
 export const APP_BUILD_DATE = '2026-09-06';
-export const APP_CHANGELOG = '실측값 판정 차이 및 앱 전반 수치 단위 미터(m, 0.001m 정밀도) 통일 (야장 판정란 cm 표기 제거, CSV 내보내기 편차(m) 및 수식 변경, 종단면 차트 범례 m 통일)';
+export const APP_CHANGELOG = '지도 뷰어 모바일 상단 헤더 단순화(제목 "지도뷰어", 서브타이틀 "좌표계: {CRS}" 단일화 및 줄바꿈/겹침 해결, 버튼 컴팩트화)';
