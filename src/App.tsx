@@ -82,6 +82,27 @@ export function App() {
     return updated;
   };
 
+  /**
+   * 시점과 종점 두 맨홀을 한 번에 적용한다.
+   */
+  const pickSpan = (startItem: ManholeMasterItem, endItem: ManholeMasterItem) => {
+    const all = getSavedManholes();
+    const current = readJson('survey_trench_data_v2');
+    let updated = applyManholePick(current, 'start', startItem, all);
+    updated = applyManholePick(updated, 'end', endItem, all);
+    const reconciled = reconcileRouteContext(updated, loadRoutes(), all);
+    localStorage.setItem('survey_trench_data_v2', JSON.stringify(reconciled));
+    setLoadedTrenchData(reconciled as TrenchSurveyData);
+
+    const gap = describeLengthGap(reconciled.startMhName, reconciled.endMhName, all);
+    showToast(
+      reconciled.len
+        ? `구간 [${startItem.name} ~ ${endItem.name}] 적용 완료 · 연장 ${reconciled.len}m`
+        : `구간 [${startItem.name} ~ ${endItem.name}] 적용 완료 · 연장 계산 불가 — ${gap}`
+    );
+    return reconciled;
+  };
+
   const handleUpdateHeader = (name: string, ih: string, sub: string) => {
     setSecName(name);
     setIhVal(ih);
@@ -200,6 +221,12 @@ export function App() {
           setActiveTab('trench');
           pickManhole(type, item);
         }}
+        onApplySpan={(startItem, endItem) => {
+          setActiveTab('trench');
+          pickSpan(startItem, endItem);
+        }}
+        initialStartMhName={readJson('survey_trench_data_v2').startMhName}
+        initialEndMhName={readJson('survey_trench_data_v2').endMhName}
       />
 
       {/* Floating Toast Notification */}

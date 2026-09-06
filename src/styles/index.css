@@ -1361,3 +1361,18 @@ tr.detail dd { margin: 0; color: var(--ink); font-variant-numeric: tabular-nums;
   cursor: pointer;
   font: 600 13px var(--sans);
 }
+
+/* ── 도면 지도 구간 연장 툴팁 ─────────────────────── */
+.span-length-tooltip {
+  background: #1C2B63 !important;
+  color: #FFFFFF !important;
+  font-weight: 800 !important;
+  font-size: 11px !important;
+  padding: 3px 8px !important;
+  border-radius: 6px !important;
+  border: 1px solid #FFD700 !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
+}
+.span-length-tooltip::before {
+  border-top-color: #1C2B63 !important;
+}

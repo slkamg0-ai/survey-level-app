@@ -18,6 +18,9 @@ interface Props {
   onToast: (msg: string) => void;
   manholes: ManholeMasterItem[];
   onSelectManhole?: (type: 'start' | 'end', item: ManholeMasterItem) => void;
+  onApplySpan?: (startItem: ManholeMasterItem, endItem: ManholeMasterItem) => void;
+  initialStartMhName?: string;
+  initialEndMhName?: string;
 }
 
 const STORAGE_MAP_CRS = 'survey_map_crs_v1';
@@ -37,14 +40,23 @@ export const SiteMapModal: React.FC<Props> = ({
   onClose,
   onToast,
   manholes,
-  onSelectManhole
+  onSelectManhole,
+  onApplySpan,
+  initialStartMhName,
+  initialEndMhName
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
+  const spanPolylineRef = useRef<L.Polyline | null>(null);
   const imageOverlayRef = useRef<L.ImageOverlay | null>(null);
   const myLocationMarkerRef = useRef<L.CircleMarker | null>(null);
   const myAccuracyCircleRef = useRef<L.Circle | null>(null);
+  const hasFittedBoundsRef = useRef(false);
+
+  // 시점 및 종점 맨홀 동시 선택 상태
+  const [selectedStartMh, setSelectedStartMh] = useState<ManholeMasterItem | null>(null);
+  const [selectedEndMh, setSelectedEndMh] = useState<ManholeMasterItem | null>(null);
 
   // 지도 상태
   const [crs, setCrs] = useState<SupportedCRS>(() => {
@@ -94,12 +106,26 @@ export const SiteMapModal: React.FC<Props> = ({
     localStorage.setItem(STORAGE_MAP_CRS, crs);
   }, [crs]);
 
+  // 초기 시점/종점 맨홀 동기화
+  useEffect(() => {
+    if (isOpen) {
+      if (initialStartMhName && (!selectedStartMh || selectedStartMh.name !== initialStartMhName)) {
+        const found = manholes.find(m => m.name === initialStartMhName);
+        if (found) setSelectedStartMh(found);
+      }
+      if (initialEndMhName && (!selectedEndMh || selectedEndMh.name !== initialEndMhName)) {
+        const found = manholes.find(m => m.name === initialEndMhName);
+        if (found) setSelectedEndMh(found);
+      }
+    }
+  }, [isOpen, initialStartMhName, initialEndMhName, manholes]);
+
   // 2. Leaflet 지도 인스턴스 초기화
   useEffect(() => {
-    if (!isOpen || !mapContainerRef.current) return;
+    if (!mapContainerRef.current) return;
 
     if (!mapInstanceRef.current) {
-      // 초기 중심 좌표: 첫 번째 유효 맨홀 좌표 또는 송산그린시티 기본 좌표 (37.228, 126.791)
+      // 초기 중심 좌표: 첫 번째 유효 맨홀 좌표 또는 기본 좌표 (37.228, 126.791)
       let initialCenter: [number, number] = [37.228, 126.791];
       for (const m of manholes) {
         const x = parseNum(m.x);
@@ -152,18 +178,77 @@ export const SiteMapModal: React.FC<Props> = ({
         attribution: '© OpenStreetMap'
       }).addTo(map);
     }
+  }, [mapType]);
 
-    // 모달이 열릴 때 크기 재조정
-    setTimeout(() => {
-      map.invalidateSize();
+  // 모달이 열릴 때 크기 재조정 (DOM 숨김 해제 후 렌더링 동기화)
+  useEffect(() => {
+    if (!isOpen || !mapInstanceRef.current) return;
+    const t1 = setTimeout(() => {
+      mapInstanceRef.current?.invalidateSize();
+    }, 50);
+    const t2 = setTimeout(() => {
+      mapInstanceRef.current?.invalidateSize();
     }, 200);
-
     return () => {
-      // 모달이 완전히 unmount될 때만 정리
+      clearTimeout(t1);
+      clearTimeout(t2);
     };
-  }, [isOpen, mapType]);
+  }, [isOpen]);
 
-  // 3. 맨홀 마커 렌더링 (좌표계 CRS 변경 시 자동 재배치)
+  // 컴포넌트 완전 unmount 시 정리
+  useEffect(() => {
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
+    };
+  }, []);
+
+  // 3-1. 시점 및 종점 맨홀 간 관로 연결선 (Polyline) 렌더링
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    if (spanPolylineRef.current) {
+      map.removeLayer(spanPolylineRef.current);
+      spanPolylineRef.current = null;
+    }
+
+    if (!selectedStartMh || !selectedEndMh) return;
+
+    const sx = parseNum(selectedStartMh.x);
+    const sy = parseNum(selectedStartMh.y);
+    const ex = parseNum(selectedEndMh.x);
+    const ey = parseNum(selectedEndMh.y);
+    if (sx === null || sy === null || ex === null || ey === null) return;
+
+    const sll = toLatLng(sx, sy, crs);
+    const ell = toLatLng(ex, ey, crs);
+    if (!sll || !ell) return;
+
+    const dist = Math.sqrt((sx - ex) ** 2 + (sy - ey) ** 2);
+
+    const poly = L.polyline(
+      [[sll.lat, sll.lng], [ell.lat, ell.lng]],
+      {
+        color: '#2B4FD1',
+        weight: 5,
+        dashArray: '8, 8',
+        opacity: 0.95
+      }
+    ).addTo(map);
+
+    poly.bindTooltip(`구간 연장: ${dist.toFixed(2)}m`, {
+      permanent: true,
+      direction: 'center',
+      className: 'span-length-tooltip'
+    });
+
+    spanPolylineRef.current = poly;
+  }, [selectedStartMh, selectedEndMh, crs]);
+
+  // 3-2. 맨홀 마커 렌더링 (좌표계 CRS 변경 시 자동 재배치 및 선택 상태 시각화)
   useEffect(() => {
     const map = mapInstanceRef.current;
     const markersLayer = markersLayerRef.current;
@@ -183,24 +268,45 @@ export const SiteMapModal: React.FC<Props> = ({
 
       validLatLngs.push([ll.lat, ll.lng]);
 
+      const isStart = selectedStartMh?.id === m.id;
+      const isEnd = selectedEndMh?.id === m.id;
+
+      let badgeBg = '#2B4FD1';
+      let borderStyle = '2px solid white';
+      let shadowStyle = '0 2px 6px rgba(0,0,0,0.4)';
+      let labelPrefix = '🕳️';
+
+      if (isStart) {
+        badgeBg = '#1E3A8A';
+        borderStyle = '3px solid #FBBF24';
+        shadowStyle = '0 0 12px rgba(251, 191, 36, 0.9)';
+        labelPrefix = '📍 [시점]';
+      } else if (isEnd) {
+        badgeBg = '#15803D';
+        borderStyle = '3px solid #FBBF24';
+        shadowStyle = '0 0 12px rgba(251, 191, 36, 0.9)';
+        labelPrefix = '🎯 [종점]';
+      }
+
       // 커스텀 SVG 마커 아이콘
       const markerHtml = `
         <div class="mh-map-pin" style="
-          background: #2B4FD1;
+          background: ${badgeBg};
           color: white;
-          font-weight: 700;
+          font-weight: 800;
           font-size: 11px;
-          padding: 2px 6px;
+          padding: 3px 7px;
           border-radius: 12px;
-          border: 2px solid white;
-          box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+          border: ${borderStyle};
+          box-shadow: ${shadowStyle};
           white-space: nowrap;
           display: flex;
           align-items: center;
-          gap: 3px;
+          gap: 4px;
           transform: translate(-50%, -50%);
+          cursor: pointer;
         ">
-          <span>🕳️</span>
+          <span>${labelPrefix}</span>
           <span>${m.name}</span>
         </div>
       `;
@@ -211,7 +317,10 @@ export const SiteMapModal: React.FC<Props> = ({
         iconSize: [0, 0]
       });
 
-      const marker = L.marker([ll.lat, ll.lng], { icon: customIcon });
+      const marker = L.marker([ll.lat, ll.lng], {
+        icon: customIcon,
+        zIndexOffset: (isStart || isEnd) ? 1000 : 0
+      });
 
       // 팝업 내용
       const distText = myLocation
@@ -219,7 +328,7 @@ export const SiteMapModal: React.FC<Props> = ({
         : '';
 
       const popupContent = document.createElement('div');
-      popupContent.style.minWidth = '160px';
+      popupContent.style.minWidth = '170px';
       popupContent.innerHTML = `
         <div style="font-weight:700; font-size:14px; margin-bottom:4px; color:#1C2B63;">
           ${m.name} ${m.remarks ? `<small style="font-size:11px; color:#666;">(${m.remarks})</small>` : ''}
@@ -229,11 +338,11 @@ export const SiteMapModal: React.FC<Props> = ({
         ${distText}
         <div style="display:flex; gap:6px; margin-top:8px;">
           <button id="btn-pick-start-${m.id}" style="
-            flex:1; padding:6px; font-size:11px; font-weight:700; background:#2B4FD1; color:white; border:none; border-radius:6px; cursor:pointer;
-          ">시점 적용</button>
+            flex:1; padding:7px 4px; font-size:11px; font-weight:700; background:#2B4FD1; color:white; border:none; border-radius:6px; cursor:pointer;
+          ">📍 시점 지정</button>
           <button id="btn-pick-end-${m.id}" style="
-            flex:1; padding:6px; font-size:11px; font-weight:700; background:#1F9D63; color:white; border:none; border-radius:6px; cursor:pointer;
-          ">종점 적용</button>
+            flex:1; padding:7px 4px; font-size:11px; font-weight:700; background:#1F9D63; color:white; border:none; border-radius:6px; cursor:pointer;
+          ">🎯 종점 지정</button>
         </div>
       `;
 
@@ -244,16 +353,16 @@ export const SiteMapModal: React.FC<Props> = ({
         const btnEnd = document.getElementById(`btn-pick-end-${m.id}`);
         if (btnStart) {
           btnStart.onclick = () => {
-            if (onSelectManhole) onSelectManhole('start', m);
-            onToast(`'${m.name}' 맨홀을 관로 야장 [시점]으로 적용했습니다`);
-            onClose();
+            setSelectedStartMh(m);
+            map.closePopup();
+            onToast(`'${m.name}' 맨홀을 [시점]으로 지정했습니다. 이어서 종점 맨홀을 선택하세요.`);
           };
         }
         if (btnEnd) {
           btnEnd.onclick = () => {
-            if (onSelectManhole) onSelectManhole('end', m);
-            onToast(`'${m.name}' 맨홀을 관로 야장 [종점]으로 적용했습니다`);
-            onClose();
+            setSelectedEndMh(m);
+            map.closePopup();
+            onToast(`'${m.name}' 맨홀을 [종점]으로 지정했습니다.`);
           };
         }
       });
@@ -261,12 +370,13 @@ export const SiteMapModal: React.FC<Props> = ({
       markersLayer.addLayer(marker);
     });
 
-    // 맨홀 좌표 영역으로 지도 포커스 자동 맞춤
-    if (validLatLngs.length > 0 && !blueprintUrl) {
+    // 맨홀 좌표 영역으로 지도 포커스 자동 맞춤 (최초 1회만)
+    if (validLatLngs.length > 0 && !blueprintUrl && !hasFittedBoundsRef.current) {
       const bounds = L.latLngBounds(validLatLngs);
       map.fitBounds(bounds, { padding: [40, 40], maxZoom: 17 });
+      hasFittedBoundsRef.current = true;
     }
-  }, [manholes, crs, myLocation, isOpen]);
+  }, [manholes, crs, myLocation, selectedStartMh, selectedEndMh]);
 
   // 4. 도면 이미지 오버레이 (Overlay) 업데이트
   useEffect(() => {
@@ -448,7 +558,58 @@ export const SiteMapModal: React.FC<Props> = ({
     setShowConfigPanel(false);
   };
 
-  if (!isOpen) return null;
+  // 구간 연장 계산 (m)
+  const calculatedSpanLen = (() => {
+    if (!selectedStartMh || !selectedEndMh) return null;
+    const sx = parseNum(selectedStartMh.x);
+    const sy = parseNum(selectedStartMh.y);
+    const ex = parseNum(selectedEndMh.x);
+    const ey = parseNum(selectedEndMh.y);
+    if (sx !== null && sy !== null && ex !== null && ey !== null) {
+      return Math.sqrt((sx - ex) ** 2 + (sy - ey) ** 2);
+    }
+    return null;
+  })();
+
+  // 두 맨홀을 한 번에 야장에 적용
+  const handleApplyBoth = () => {
+    if (!selectedStartMh || !selectedEndMh) return;
+    if (onApplySpan) {
+      onApplySpan(selectedStartMh, selectedEndMh);
+    } else if (onSelectManhole) {
+      onSelectManhole('start', selectedStartMh);
+      onSelectManhole('end', selectedEndMh);
+    }
+    onToast(`🚀 [${selectedStartMh.name} ~ ${selectedEndMh.name}] 구간을 야장에 적용했습니다`);
+    onClose();
+  };
+
+  // 단독 맨홀 야장 적용
+  const handleApplySingle = () => {
+    if (selectedStartMh && onSelectManhole) {
+      onSelectManhole('start', selectedStartMh);
+      onToast(`'${selectedStartMh.name}' 맨홀을 시점으로 적용했습니다`);
+    } else if (selectedEndMh && onSelectManhole) {
+      onSelectManhole('end', selectedEndMh);
+      onToast(`'${selectedEndMh.name}' 맨홀을 종점으로 적용했습니다`);
+    }
+    onClose();
+  };
+
+  // 선택된 두 맨홀 구간으로 지도 뷰포트 확대
+  const handleZoomToSpan = () => {
+    const map = mapInstanceRef.current;
+    if (!map || !selectedStartMh || !selectedEndMh) return;
+    const sx = parseNum(selectedStartMh.x);
+    const sy = parseNum(selectedStartMh.y);
+    const ex = parseNum(selectedEndMh.x);
+    const ey = parseNum(selectedEndMh.y);
+    if (sx === null || sy === null || ex === null || ey === null) return;
+    const sll = toLatLng(sx, sy, crs);
+    const ell = toLatLng(ex, ey, crs);
+    if (!sll || !ell) return;
+    map.fitBounds([[sll.lat, sll.lng], [ell.lat, ell.lng]], { padding: [80, 80], maxZoom: 18 });
+  };
 
   return (
     <div
@@ -458,7 +619,7 @@ export const SiteMapModal: React.FC<Props> = ({
         backgroundColor: 'rgba(0,0,0,0.7)',
         backdropFilter: 'blur(4px)',
         zIndex: 105,
-        display: 'flex',
+        display: isOpen ? 'flex' : 'none',
         flexDirection: 'column'
       }}
     >
@@ -839,6 +1000,205 @@ export const SiteMapModal: React.FC<Props> = ({
                 </button>
               </div>
             )}
+          </div>
+        )}
+      </div>
+
+      {/* 4. 하단 시점·종점 맨홀 구간 선택 및 야장 적용 바 */}
+      <div
+        style={{
+          background: 'var(--surface)',
+          borderTop: '1px solid var(--line)',
+          padding: '10px 14px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px',
+          boxShadow: '0 -4px 16px rgba(0,0,0,0.15)',
+          zIndex: 1000
+        }}
+      >
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'stretch' }}>
+          {/* 시점 맨홀 카드 */}
+          <div
+            style={{
+              flex: 1,
+              background: selectedStartMh ? 'rgba(43, 79, 209, 0.08)' : 'var(--bg)',
+              border: `1.5px solid ${selectedStartMh ? '#2B4FD1' : 'var(--line)'}`,
+              borderRadius: '8px',
+              padding: '8px 10px',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              position: 'relative'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '11px', fontWeight: 700, color: '#2B4FD1' }}>
+                📍 시점 맨홀
+              </span>
+              {selectedStartMh && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedStartMh(null)}
+                  style={{
+                    border: 'none',
+                    background: 'none',
+                    color: 'var(--ink-3)',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    padding: '0 2px'
+                  }}
+                  title="시점 선택 해제"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+            <div style={{ fontWeight: 800, fontSize: '14px', color: 'var(--ink)', marginTop: '2px' }}>
+              {selectedStartMh ? selectedStartMh.name : <span style={{ color: 'var(--ink-3)', fontSize: '12px' }}>지도에서 탭</span>}
+            </div>
+            {selectedStartMh && (
+              <div style={{ fontSize: '11px', color: 'var(--ink-2)', marginTop: '2px' }}>
+                유출관저고: <b>{selectedStartMh.invertEl} m</b>
+              </div>
+            )}
+          </div>
+
+          {/* 종점 맨홀 카드 */}
+          <div
+            style={{
+              flex: 1,
+              background: selectedEndMh ? 'rgba(31, 157, 99, 0.08)' : 'var(--bg)',
+              border: `1.5px solid ${selectedEndMh ? '#1F9D63' : 'var(--line)'}`,
+              borderRadius: '8px',
+              padding: '8px 10px',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              position: 'relative'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '11px', fontWeight: 700, color: '#1F9D63' }}>
+                🎯 종점 맨홀
+              </span>
+              {selectedEndMh && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedEndMh(null)}
+                  style={{
+                    border: 'none',
+                    background: 'none',
+                    color: 'var(--ink-3)',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    padding: '0 2px'
+                  }}
+                  title="종점 선택 해제"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+            <div style={{ fontWeight: 800, fontSize: '14px', color: 'var(--ink)', marginTop: '2px' }}>
+              {selectedEndMh ? selectedEndMh.name : <span style={{ color: 'var(--ink-3)', fontSize: '12px' }}>지도에서 탭</span>}
+            </div>
+            {selectedEndMh && (
+              <div style={{ fontSize: '11px', color: 'var(--ink-2)', marginTop: '2px' }}>
+                유입관저고: <b>{selectedEndMh.invertElIn || selectedEndMh.invertEl} m</b>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 액션 버튼 영역 */}
+        {selectedStartMh && selectedEndMh ? (
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              type="button"
+              onClick={handleApplyBoth}
+              style={{
+                flex: 1,
+                padding: '10px',
+                background: '#2B4FD1',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                fontWeight: 700,
+                fontSize: '13px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '6px',
+                boxShadow: '0 2px 6px rgba(43, 79, 209, 0.4)'
+              }}
+            >
+              <span>🚀</span>
+              <span>
+                [{selectedStartMh.name} ~ {selectedEndMh.name}] 야장에 구간 적용
+                {calculatedSpanLen !== null ? ` (${calculatedSpanLen.toFixed(2)}m)` : ''}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={handleZoomToSpan}
+              style={{
+                padding: '10px 12px',
+                background: 'var(--bg)',
+                color: 'var(--ink)',
+                border: '1px solid var(--line)',
+                borderRadius: '8px',
+                fontWeight: 600,
+                fontSize: '12px',
+                cursor: 'pointer'
+              }}
+              title="선택 구간으로 지도 확대"
+            >
+              🔍 구간보기
+            </button>
+          </div>
+        ) : (selectedStartMh || selectedEndMh) ? (
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              type="button"
+              onClick={handleApplySingle}
+              style={{
+                flex: 1,
+                padding: '9px',
+                background: 'var(--surface-tint)',
+                color: '#2B4FD1',
+                border: '1px solid #C7CFEF',
+                borderRadius: '8px',
+                fontWeight: 700,
+                fontSize: '12px',
+                cursor: 'pointer'
+              }}
+            >
+              '{selectedStartMh ? selectedStartMh.name : selectedEndMh!.name}' 단독 적용 및 야장 이동
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedStartMh(null);
+                setSelectedEndMh(null);
+              }}
+              style={{
+                padding: '9px 12px',
+                background: 'none',
+                color: 'var(--ink-3)',
+                border: '1px solid var(--line)',
+                borderRadius: '8px',
+                fontSize: '12px',
+                cursor: 'pointer'
+              }}
+            >
+              초기화
+            </button>
+          </div>
+        ) : (
+          <div style={{ fontSize: '11.5px', color: 'var(--ink-2)', textAlign: 'center', padding: '2px 0' }}>
+            💡 지도 위의 맨홀을 터치하여 <b>[시점 지정]</b> 및 <b>[종점 지정]</b>을 완료하세요.
           </div>
         )}
       </div>
