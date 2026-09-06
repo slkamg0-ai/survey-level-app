@@ -80,13 +80,13 @@ export function buildWarnings(data: TrenchSurveyData, c: ComputedLike): SurveyWa
     }
   }
 
-  // 3. 모래·콘크리트·골재 3층 동시 적용 — 터파기 바닥이 그만큼 더 깊어진다
+  // 3. 모래·콘크리트·골재 3층 동시 적용 (연약지반 복합기초 안내)
   if (!isMh && c.sand > 0 && c.conc > 0 && c.agg > 0) {
     w.push({
       id: 'three-layers',
       level: 'warn',
-      title: '모래·콘크리트·골재 3개 층이 모두 적용돼 있습니다',
-      detail: `터파기 바닥이 관저고보다 ${(c.t + layerTotal).toFixed(3)} m 아래로 내려갑니다. 모래기초와 콘크리트기초 중 하나만 쓰는 현장이라면 쓰지 않는 층을 0으로 두세요.`
+      title: '연약지반 복합기초(골재+콘크리트+모래) 적용 중',
+      detail: `터파기 바닥이 관저고보다 ${(c.t + layerTotal).toFixed(3)} m 아래로 내려갑니다 (모래 ${c.sand.toFixed(3)}m + 콘크리트 ${c.conc.toFixed(3)}m + 골재 ${c.agg.toFixed(3)}m). 일반 단일기초 현장이라면 쓰지 않는 층을 0으로 두세요.`
     });
   }
 

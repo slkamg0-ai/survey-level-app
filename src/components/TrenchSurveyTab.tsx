@@ -11,6 +11,7 @@ import { PP_DOUBLE_SPECS, STORMWATER_SPECS, findPipeThickness } from '../data/pi
 import { Download, Copy, RefreshCw, RotateCcw, FileSpreadsheet, Check, AlertCircle, Camera, MapPin, Sparkles, Database, Search } from 'lucide-react';
 import { getSavedManholes } from './ManholeDbModal';
 import { mergeWithDefaults, readStored, parseNum } from '../utils/storage';
+import { compressImage } from '../utils/image';
 
 interface Props {
   onUpdateHeader: (secName: string, ihVal: string, ihSub: string) => void;
@@ -69,7 +70,12 @@ const DEFAULT_DATA: TrenchSurveyData = {
  * 현장은 터파기 → 골재 → 레미콘 → 바닥 순으로 같은 지점을 여러 번 재므로
  * 기준별로 따로 남겨야 공정별 검측 이력이 보존된다.
  */
-const measKey = (spanKey: string, mode: string, x: number | string) => `${spanKey}|${mode}@${x}`;
+export const formatStationX = (x: number | string): string => {
+  const n = typeof x === 'number' ? x : parseFloat(String(x));
+  return isFinite(n) ? (Math.round(n * 1000) / 1000).toString() : String(x);
+};
+
+const measKey = (spanKey: string, mode: string, x: number | string) => `${spanKey}|${mode}@${formatStationX(x)}`;
 
 /** 노선 구간을 구분하는 키. 단일 구간 측량은 'single' */
 const spanKeyOf = (d: TrenchSurveyData) =>
@@ -277,12 +283,20 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
         };
 
         if (file) {
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            photoUrl = e.target?.result as string;
-            processPhoto();
-          };
-          reader.readAsDataURL(file);
+          compressImage(file, 800, 0.7)
+            .then(compressed => {
+              photoUrl = compressed;
+              processPhoto();
+            })
+            .catch(err => {
+              console.error('Photo compression failed, falling back to direct reader:', err);
+              const reader = new FileReader();
+              reader.onload = (e) => {
+                photoUrl = e.target?.result as string;
+                processPhoto();
+              };
+              reader.readAsDataURL(file);
+            });
         } else {
           processPhoto();
         }
@@ -350,10 +364,10 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
     let x = 0;
     let guard = 0;
     while (x < L - 1e-9 && guard++ < 2000) {
-      xs.push(x);
+      xs.push(Math.round(x * 1000) / 1000);
       x += step;
     }
-    xs.push(L);
+    xs.push(Math.round(L * 1000) / 1000);
 
     // 종점 맨홀 "자신"의 터파기/바닥 기준 — 낙차맨홀이면 이 구간 유입관저고(ei)가 아니라
     // 그 맨홀의 유출관저고(더 낮은 값, next 구간으로 나가는 값)가 기준이 된다.
@@ -649,9 +663,9 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
       // G열 (편차 cm): (실측F - 목표E) * 100
       const devFormula = `=IF(OR(ISBLANK(F${rNum}), ISBLANK(E${rNum})), "", ROUND((F${rNum} - E${rNum}) * 100, 1))`;
 
-      // H열 (판정): ABS((F - E) * 1000) <= 허용오차 H4 이면 적정, F > E 더파기, 아니면 되메움
+      // H열 (판정): ABS((F - E) * 1000) <= 허용오차 H4 이면 적정, F > E 되메움, 아니면 더파기
       // ROUND 를 씌워야 허용오차와 정확히 같은 값이 부동소수점 오차로 부적합이 되지 않는다
-      const jdFormula = `=IF(OR(ISBLANK(F${rNum}), ISBLANK(E${rNum})), "", IF(ROUND(ABS((F${rNum} - E${rNum}) * 1000), 6) <= $H$4, "적정", IF(F${rNum} > E${rNum}, "더파기", "되메움")))`;
+      const jdFormula = `=IF(OR(ISBLANK(F${rNum}), ISBLANK(E${rNum})), "", IF(ROUND(ABS((F${rNum} - E${rNum}) * 1000), 6) <= $H$4, "적정", IF(F${rNum} > E${rNum}, "되메움", "더파기")))`;
 
       const label = isMhCsv
         ? (r.node === 'start' ? (data.startMhName || '시점 MH') : (data.endMhName || '종점 MH'))
@@ -676,20 +690,37 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
   };
 
 
-  const handleDownloadCsv = () => {
-    // \uD655\uC815\uB418\uC9C0 \uC54A\uC740 \uAE30\uCD08 \uC81C\uC6D0\uC73C\uB85C \uB9CC\uB4E0 \uC57C\uC7A5\uC774 \uC131\uACFC\uD488\uC73C\uB85C \uB098\uAC00\uB294 \uAC83\uC744 \uB9C9\uB294\uB2E4
+  const handleDownloadCsv = async () => {
+    // 확정되지 않은 기초 제원으로 만든 야장이 성과품으로 나가는 것을 막는다
     if (!isSpecConfirmed(data)) {
-      onToast('\uAE30\uCD08 \uC81C\uC6D0\uC744 \uBA3C\uC800 \uD655\uC815\uD558\uC138\uC694 (\uAE30\uCD08 \uCE35 \uAD6C\uC131 \u00B7 \uD655\uC778)');
+      onToast('기초 제원을 먼저 확정하세요 (기초 층 구성 · 확인)');
       return;
     }
     const csv = '\uFEFF' + buildCsv();
     const nm = (data.secName.trim() || '관로터파기야장').replace(/[\\/:*?"<>|]/g, '_');
+    const fileName = `${nm}.csv`;
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+
+    // 1. 모바일 기기 Web Share API 지원 시 우선 사용 (카톡, 드라이브 등)
+    if (navigator.canShare && navigator.canShare({ files: [new File([blob], fileName, { type: 'text/csv' })] })) {
+      try {
+        await navigator.share({
+          files: [new File([blob], fileName, { type: 'text/csv' })],
+          title: fileName,
+        });
+        onToast('공유/저장 창을 열었습니다');
+        return;
+      } catch (e) {
+        if ((e as Error).name === 'AbortError') return;
+      }
+    }
+
+    // 2. 브라우저 파일 다운로드
     try {
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${nm}.csv`;
+      a.download = fileName;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -701,9 +732,17 @@ export const TrenchSurveyTab: React.FC<Props> = ({ onUpdateHeader, onToast, load
   };
 
   const handleCopyTable = () => {
-    const text = buildCsv().replace(/,/g, '\t');
+    const csv = buildCsv();
+    const tsv = csv
+      .split('\r\n')
+      .map(row => row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
+        .map(cell => cell.replace(/^"|"$/g, '').replace(/""/g, '"'))
+        .join('\t')
+      )
+      .join('\r\n');
+
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(() => onToast('표를 클립보드에 복사했습니다'));
+      navigator.clipboard.writeText(tsv).then(() => onToast('표를 클립보드에 복사했습니다'));
     } else {
       onToast('복사 기능 미지원 브라우저입니다');
     }

@@ -123,8 +123,10 @@ export const StandardLevelTab: React.FC<Props> = ({ onUpdateHeader, onToast, loa
             calcGh = currentIh - sight;
             currentGh = calcGh;
           }
-          if (bsVal !== null && calcGh !== null) {
-            currentIh = calcGh + bsVal;
+          // 해당 행에서 산출된 calcGh가 없더라도, 이전 행에서 확정된 currentGh를 베이스로 신규 기계고 산출 (2행 분리 TP 지원)
+          const baseGhForIh = calcGh !== null ? calcGh : currentGh;
+          if (bsVal !== null && baseGhForIh !== null) {
+            currentIh = baseGhForIh + bsVal;
             calcIh = currentIh;
           }
         } else {
@@ -139,7 +141,7 @@ export const StandardLevelTab: React.FC<Props> = ({ onUpdateHeader, onToast, loa
           }
           if (bsVal !== null) {
             prevSight = bsVal;
-          } else {
+          } else if (sight !== null) {
             prevSight = sight;
           }
         }
@@ -318,15 +320,32 @@ export const StandardLevelTab: React.FC<Props> = ({ onUpdateHeader, onToast, loa
   };
 
 
-  const handleDownloadCsv = () => {
+  const handleDownloadCsv = async () => {
     const csv = '\uFEFF' + buildCsv();
     const nm = (data.title.trim() || '표준레벨야장').replace(/[\\/:*?"<>|]/g, '_');
+    const fileName = `${nm}.csv`;
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+
+    // 1. 모바일 Web Share API 우선 지원
+    if (navigator.canShare && navigator.canShare({ files: [new File([blob], fileName, { type: 'text/csv' })] })) {
+      try {
+        await navigator.share({
+          files: [new File([blob], fileName, { type: 'text/csv' })],
+          title: fileName,
+        });
+        onToast('공유/저장 창을 열었습니다');
+        return;
+      } catch (e) {
+        if ((e as Error).name === 'AbortError') return;
+      }
+    }
+
+    // 2. 브라우저 파일 다운로드
     try {
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${nm}.csv`;
+      a.download = fileName;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -338,9 +357,17 @@ export const StandardLevelTab: React.FC<Props> = ({ onUpdateHeader, onToast, loa
   };
 
   const handleCopyTable = () => {
-    const text = buildCsv().replace(/,/g, '\t');
+    const csv = buildCsv();
+    const tsv = csv
+      .split('\r\n')
+      .map(row => row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
+        .map(cell => cell.replace(/^"|"$/g, '').replace(/""/g, '"'))
+        .join('\t')
+      )
+      .join('\r\n');
+
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(() => onToast('표를 클립보드에 복사했습니다'));
+      navigator.clipboard.writeText(tsv).then(() => onToast('표를 클립보드에 복사했습니다'));
     } else {
       onToast('복사 미지원 브라우저입니다');
     }

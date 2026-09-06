@@ -7,6 +7,7 @@ import { JobSessionModal } from './components/JobSessionModal';
 import { ManholeDbModal, getSavedManholes } from './components/ManholeDbModal';
 import { RouteModal } from './components/RouteModal';
 import { NearbyModal } from './components/NearbyModal';
+import { SiteMapModal } from './components/SiteMapModal';
 import { loadRoutes, buildSpans, applyManholePick, describeLengthGap, reconcileRouteContext } from './utils/routes';
 import { TrenchSurveyData, StandardSurveyData, ManholeMasterItem } from './types/survey';
 import './styles/index.css';
@@ -34,6 +35,7 @@ export function App() {
   const [isMhDbModalOpen, setIsMhDbModalOpen] = useState(false);
   const [isRouteModalOpen, setIsRouteModalOpen] = useState(false);
   const [isNearbyModalOpen, setIsNearbyModalOpen] = useState(false);
+  const [isSiteMapOpen, setIsSiteMapOpen] = useState(false);
 
   // 로드 콜백 트리거
   const [loadedTrenchData, setLoadedTrenchData] = useState<TrenchSurveyData | null>(null);
@@ -98,6 +100,7 @@ export function App() {
         onOpenMhDb={() => setIsMhDbModalOpen(true)}
         onOpenRoutes={() => setIsRouteModalOpen(true)}
         onOpenNearby={() => setIsNearbyModalOpen(true)}
+        onOpenMap={() => setIsSiteMapOpen(true)}
       />
 
       {activeTab === 'trench' ? (
@@ -182,6 +185,18 @@ export function App() {
         onClose={() => setIsNearbyModalOpen(false)}
         onToast={showToast}
         onPick={(type, item) => {
+          setActiveTab('trench');
+          pickManhole(type, item);
+        }}
+      />
+
+      {/* 3백만㎡ 현장 평면도 지도 뷰어 모달 */}
+      <SiteMapModal
+        isOpen={isSiteMapOpen}
+        onClose={() => setIsSiteMapOpen(false)}
+        onToast={showToast}
+        manholes={getSavedManholes()}
+        onSelectManhole={(type, item) => {
           setActiveTab('trench');
           pickManhole(type, item);
         }}

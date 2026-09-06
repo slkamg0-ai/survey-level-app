@@ -12,9 +12,10 @@ interface HeaderProps {
   onOpenMhDb?: () => void;
   onOpenRoutes?: () => void;
   onOpenNearby?: () => void;
+  onOpenMap?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ secName, ihVal, ihSub, theme, onToggleTheme, onOpenJobs, onOpenMhDb, onOpenRoutes, onOpenNearby }) => {
+export const Header: React.FC<HeaderProps> = ({ secName, ihVal, ihSub, theme, onToggleTheme, onOpenJobs, onOpenMhDb, onOpenRoutes, onOpenNearby, onOpenMap }) => {
   return (
     <>
       <header className="topbar">
@@ -36,6 +37,13 @@ export const Header: React.FC<HeaderProps> = ({ secName, ihVal, ihSub, theme, on
               <span className="ih-val">{ihVal}</span>
               <span className="ih-sub">{ihSub}</span>
             </div>
+
+            {onOpenMap && (
+              <button className="topbtn" onClick={onOpenMap} title="현장 평면도 지도 뷰어" style={{ background: 'var(--primary-bg)', borderColor: 'var(--primary)' }}>
+                <span className="topbtn-ico">🗺️</span>
+                <span className="topbtn-label" style={{ color: 'var(--primary)', fontWeight: 700 }}>도면지도</span>
+              </button>
+            )}
 
             {onOpenMhDb && (
               <button className="topbtn" onClick={onOpenMhDb} title="맨홀 CAD 관저고 DB">
