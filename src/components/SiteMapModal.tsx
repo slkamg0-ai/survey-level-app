@@ -90,6 +90,7 @@ export const SiteMapModal: React.FC<Props> = ({
     }
   });
   const [cadStrokeWidth, setCadStrokeWidth] = useState<number>(2.5);
+  const [showCadText, setShowCadText] = useState<boolean>(true);
   const [showTextInputModal, setShowTextInputModal] = useState(false);
   const [textInputContent, setTextInputContent] = useState('');
 
@@ -170,7 +171,8 @@ export const SiteMapModal: React.FC<Props> = ({
         center: initialCenter,
         zoom: 16,
         maxZoom: 20,
-        zoomControl: false
+        zoomControl: false,
+        preferCanvas: true
       });
 
       L.control.zoom({ position: 'bottomright' }).addTo(map);
@@ -332,12 +334,31 @@ export const SiteMapModal: React.FC<Props> = ({
             { sticky: true, className: 'cad-vector-tooltip' }
           );
           cadLayer.addLayer(poly);
+        } else if (entity.type === 'text' && showCadText) {
+          const p = toLatLng(entity.position[0], entity.position[1], crs);
+          if (!p) return;
+
+          const textIcon = L.divIcon({
+            className: 'cad-text-icon',
+            html: `<div style="
+              font-size: 10.5px;
+              font-weight: 600;
+              color: ${entity.color || layerColor};
+              white-space: nowrap;
+              text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff;
+              pointer-events: none;
+              transform: translate(-50%, -50%);
+            ">${entity.text}</div>`,
+            iconSize: [0, 0]
+          });
+          const textMarker = L.marker([p.lat, p.lng], { icon: textIcon, interactive: false });
+          cadLayer.addLayer(textMarker);
         }
       } catch (err) {
         console.warn('CAD 객체 렌더링 건너뜀:', err);
       }
     });
-  }, [cadData, crs, cadStrokeWidth]);
+  }, [cadData, crs, cadStrokeWidth, showCadText]);
 
   // 3-1. 시점 및 종점 맨홀 간 관로 연결선 (Polyline) 렌더링
   useEffect(() => {
@@ -634,6 +655,9 @@ export const SiteMapModal: React.FC<Props> = ({
       } else if (e.type === 'circle' || e.type === 'arc') {
         const c = toLatLng(e.center[0], e.center[1], crs);
         if (c) latlngs.push([c.lat, c.lng]);
+      } else if (e.type === 'text') {
+        const p = toLatLng(e.position[0], e.position[1], crs);
+        if (p) latlngs.push([p.lat, p.lng]);
       }
     });
 
@@ -1367,6 +1391,11 @@ export const SiteMapModal: React.FC<Props> = ({
                           호(Arc): <b>{cadData.stats.arcs}</b>
                         </span>
                       )}
+                      {cadData.stats.texts !== undefined && cadData.stats.texts > 0 && (
+                        <span style={{ background: 'var(--surface)', padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--line)' }}>
+                          문자(Text): <b>{cadData.stats.texts}</b>
+                        </span>
+                      )}
                     </div>
 
                     {/* 선 두께 조절 슬라이더 */}
@@ -1384,6 +1413,25 @@ export const SiteMapModal: React.FC<Props> = ({
                         style={{ width: '130px', cursor: 'pointer' }}
                       />
                     </div>
+
+                    {/* 도면 문자 라벨 표시 토글 */}
+                    {cadData.stats.texts !== undefined && cadData.stats.texts > 0 && (
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '4px', borderTop: '1px solid var(--line)' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--ink)' }}>
+                          도면 문자(Text) 라벨 표시
+                        </span>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 600 }}>
+                          <input
+                            type="checkbox"
+                            checked={showCadText}
+                            onChange={e => setShowCadText(e.target.checked)}
+                          />
+                          <span style={{ color: showCadText ? 'var(--primary)' : 'var(--ink-3)' }}>
+                            {showCadText ? '켜짐' : '꺼짐'}
+                          </span>
+                        </label>
+                      </div>
+                    )}
 
                     {/* 도면층(Layer) 목록 및 ON/OFF 토글 */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '2px' }}>

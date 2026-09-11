@@ -1,4 +1,4 @@
-import { CadEntity, CadLine, CadPolyline, CadCircle, CadArc, CadDrawingData } from '../types/cad';
+import { CadEntity, CadLine, CadPolyline, CadCircle, CadArc, CadText, CadDrawingData } from '../types/cad';
 
 /**
  * AutoCAD Color Index (ACI 1~9) 표준 색상 매핑
@@ -37,11 +37,11 @@ function calc2dDist(x1: number, y1: number, x2: number, y2: number): number {
 }
 
 /**
- * 표준 DXF (ASCII) 파일 텍스트를 파싱하여 선, 폴리라인, 원, 호 객체를 추출합니다.
+ * 표준 DXF (ASCII) 파일 텍스트를 파싱하여 선, 폴리라인, 원, 호, 텍스트 객체를 추출합니다.
  */
 export function parseDxf(text: string, fileName = 'drawing.dxf'): CadDrawingData {
-  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
-  const n = lines.length;
+  const rawLines = text.split(/\r?\n/);
+  const n = rawLines.length;
 
   let inEntities = false;
   let i = 0;
@@ -55,22 +55,30 @@ export function parseDxf(text: string, fileName = 'drawing.dxf'): CadDrawingData
   let polylineCount = 0;
   let circleCount = 0;
   let arcCount = 0;
+  let textCount = 0;
 
   let entityId = 1;
 
   while (i < n - 1) {
-    const code = parseInt(lines[i].trim(), 10);
-    const val = lines[i + 1] ? lines[i + 1].trim() : '';
+    const codeStr = rawLines[i].trim();
+    const code = parseInt(codeStr, 10);
+    if (isNaN(code)) {
+      i++;
+      continue;
+    }
+    const val = rawLines[i + 1] ? rawLines[i + 1].trim() : '';
     i += 2;
 
     // SECTION 탐색
     if (code === 0 && val === 'SECTION') {
-      const nextCode = parseInt(lines[i]?.trim(), 10);
-      const nextVal = lines[i + 1]?.trim();
-      if (nextCode === 2 && nextVal === 'ENTITIES') {
-        inEntities = true;
+      if (i < n - 1) {
+        const nextCode = parseInt(rawLines[i].trim(), 10);
+        const nextVal = rawLines[i + 1] ? rawLines[i + 1].trim() : '';
         i += 2;
-        continue;
+        if (nextCode === 2 && nextVal === 'ENTITIES') {
+          inEntities = true;
+          continue;
+        }
       }
     }
 
@@ -96,9 +104,10 @@ export function parseDxf(text: string, fileName = 'drawing.dxf'): CadDrawingData
         let y2: number | null = null;
 
         while (i < n - 1) {
-          const c = parseInt(lines[i].trim(), 10);
-          const v = lines[i + 1] ? lines[i + 1].trim() : '';
+          const c = parseInt(rawLines[i].trim(), 10);
+          if (isNaN(c)) { i++; continue; }
           if (c === 0) break; // 다음 엔티티
+          const v = rawLines[i + 1] ? rawLines[i + 1].trim() : '';
           i += 2;
 
           if (c === 8) layer = v;
@@ -132,9 +141,10 @@ export function parseDxf(text: string, fileName = 'drawing.dxf'): CadDrawingData
         let currX: number | null = null;
 
         while (i < n - 1) {
-          const c = parseInt(lines[i].trim(), 10);
-          const v = lines[i + 1] ? lines[i + 1].trim() : '';
+          const c = parseInt(rawLines[i].trim(), 10);
+          if (isNaN(c)) { i++; continue; }
           if (c === 0) break;
+          const v = rawLines[i + 1] ? rawLines[i + 1].trim() : '';
           i += 2;
 
           if (c === 8) layer = v;
@@ -182,17 +192,20 @@ export function parseDxf(text: string, fileName = 'drawing.dxf'): CadDrawingData
         const vertices: [number, number][] = [];
 
         while (i < n - 1) {
-          const c = parseInt(lines[i].trim(), 10);
-          const v = lines[i + 1] ? lines[i + 1].trim() : '';
+          const c = parseInt(rawLines[i].trim(), 10);
+          if (isNaN(c)) { i++; continue; }
+          const v = rawLines[i + 1] ? rawLines[i + 1].trim() : '';
+
           if (c === 0) {
             if (v.toUpperCase() === 'VERTEX') {
               i += 2;
               let vx: number | null = null;
               let vy: number | null = null;
               while (i < n - 1) {
-                const vc = parseInt(lines[i].trim(), 10);
-                const vv = lines[i + 1] ? lines[i + 1].trim() : '';
+                const vc = parseInt(rawLines[i].trim(), 10);
+                if (isNaN(vc)) { i++; continue; }
                 if (vc === 0) break;
+                const vv = rawLines[i + 1] ? rawLines[i + 1].trim() : '';
                 i += 2;
                 if (vc === 10) vx = parseFloat(vv);
                 else if (vc === 20) vy = parseFloat(vv);
@@ -240,9 +253,10 @@ export function parseDxf(text: string, fileName = 'drawing.dxf'): CadDrawingData
         let r: number | null = null;
 
         while (i < n - 1) {
-          const c = parseInt(lines[i].trim(), 10);
-          const v = lines[i + 1] ? lines[i + 1].trim() : '';
+          const c = parseInt(rawLines[i].trim(), 10);
+          if (isNaN(c)) { i++; continue; }
           if (c === 0) break;
+          const v = rawLines[i + 1] ? rawLines[i + 1].trim() : '';
           i += 2;
 
           if (c === 8) layer = v;
@@ -275,9 +289,10 @@ export function parseDxf(text: string, fileName = 'drawing.dxf'): CadDrawingData
         let endAngle: number | null = null;
 
         while (i < n - 1) {
-          const c = parseInt(lines[i].trim(), 10);
-          const v = lines[i + 1] ? lines[i + 1].trim() : '';
+          const c = parseInt(rawLines[i].trim(), 10);
+          if (isNaN(c)) { i++; continue; }
           if (c === 0) break;
+          const v = rawLines[i + 1] ? rawLines[i + 1].trim() : '';
           i += 2;
 
           if (c === 8) layer = v;
@@ -303,6 +318,57 @@ export function parseDxf(text: string, fileName = 'drawing.dxf'): CadDrawingData
             color
           });
           arcCount++;
+        }
+      } else if (entityType === 'TEXT' || entityType === 'MTEXT') {
+        let layer = '0';
+        let colorIndex: number | undefined;
+        let tx: number | null = null;
+        let ty: number | null = null;
+        let textVal = '';
+        let height = 1;
+        let rotation = 0;
+
+        while (i < n - 1) {
+          const c = parseInt(rawLines[i].trim(), 10);
+          if (isNaN(c)) { i++; continue; }
+          if (c === 0) break;
+          const v = rawLines[i + 1] ? rawLines[i + 1].trim() : '';
+          i += 2;
+
+          if (c === 8) layer = v;
+          else if (c === 62) colorIndex = parseInt(v, 10);
+          else if (c === 10) tx = parseFloat(v);
+          else if (c === 20) ty = parseFloat(v);
+          else if (c === 40) height = parseFloat(v);
+          else if (c === 50) rotation = parseFloat(v);
+          else if (c === 1) textVal = v;
+        }
+
+        if (tx !== null && ty !== null && textVal && isFinite(tx) && isFinite(ty)) {
+          const cleanText = textVal.replace(/\\A[0-2];/g, '').replace(/\{|\}/g, '').replace(/\\P/g, ' ').trim();
+          if (cleanText) {
+            layerSet.add(layer);
+            const color = (colorIndex && ACI_COLORS[colorIndex]) || undefined;
+            entities.push({
+              type: 'text',
+              id: `text_${entityId++}`,
+              layer,
+              position: [tx, ty],
+              text: cleanText,
+              height: isFinite(height) ? height : 1,
+              rotation: isFinite(rotation) ? rotation : 0,
+              color
+            });
+            textCount++;
+          }
+        }
+      } else {
+        // 미지원 엔티티(HATCH, VIEWPORT, WIPEOUT 등)는 다음 엔티티(c === 0)까지 안전하게 스킵
+        while (i < n - 1) {
+          const c = parseInt(rawLines[i].trim(), 10);
+          if (isNaN(c)) { i++; continue; }
+          if (c === 0) break;
+          i += 2;
         }
       }
     }
@@ -330,7 +396,8 @@ export function parseDxf(text: string, fileName = 'drawing.dxf'): CadDrawingData
       lines: lineCount,
       polylines: polylineCount,
       circles: circleCount,
-      arcs: arcCount
+      arcs: arcCount,
+      texts: textCount
     }
   };
 }
@@ -487,6 +554,7 @@ export function createCadDrawingData(entities: CadEntity[], fileName = '직접�
   let polylines = 0;
   let circles = 0;
   let arcs = 0;
+  let texts = 0;
 
   entities.forEach(e => {
     const l = e.layer || '기본';
@@ -495,6 +563,7 @@ export function createCadDrawingData(entities: CadEntity[], fileName = '직접�
     else if (e.type === 'polyline') polylines++;
     else if (e.type === 'circle') circles++;
     else if (e.type === 'arc') arcs++;
+    else if (e.type === 'text') texts++;
   });
 
   const layers = Array.from(layerSet).sort();
@@ -516,7 +585,8 @@ export function createCadDrawingData(entities: CadEntity[], fileName = '직접�
       lines,
       polylines,
       circles,
-      arcs
+      arcs,
+      texts
     }
   };
 }

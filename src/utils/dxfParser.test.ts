@@ -180,4 +180,103 @@ CIRCLE, 맨홀외경, 181050, 412000, 1.2
     expect(drawing.stats.circles).toBe(1);
     expect(drawing.stats.total).toBe(2);
   });
+
+  it('빈 문자열 값(1\\n"")이나 미지원 엔티티(HATCH)가 포함되어도 패리티가 유지되어 전체 엔티티를 파싱한다', () => {
+    const dxfWithEmptyLinesAndText = `
+  0
+SECTION
+  2
+ENTITIES
+  0
+LINE
+  8
+도로망
+  1
+
+ 10
+100.0
+ 20
+200.0
+ 11
+300.0
+ 21
+400.0
+  0
+HATCH
+  8
+해치레이어
+ 70
+0
+ 10
+0.0
+  0
+TEXT
+  8
+관경레이어
+ 10
+150.0
+ 20
+250.0
+ 40
+2.5
+  1
+D=300mm
+  0
+LWPOLYLINE
+  8
+자전거도로
+ 90
+2
+ 10
+500.0
+ 20
+600.0
+ 10
+700.0
+ 20
+800.0
+  0
+ENDSEC
+  0
+EOF
+`;
+
+    const res = parseDxf(dxfWithEmptyLinesAndText, 'test_robust.dxf');
+    expect(res.stats.lines).toBe(1);
+    expect(res.stats.polylines).toBe(1);
+    expect(res.stats.texts).toBe(1);
+    expect(res.stats.total).toBe(3);
+
+    const textEntity = res.entities.find(e => e.type === 'text');
+    expect(textEntity).toBeDefined();
+    if (textEntity && textEntity.type === 'text') {
+      expect(textEntity.layer).toBe('관경레이어');
+      expect(textEntity.text).toBe('D=300mm');
+      expect(textEntity.position).toEqual([150.0, 250.0]);
+    }
+
+    const polyEntity = res.entities.find(e => e.type === 'polyline');
+    expect(polyEntity).toBeDefined();
+    if (polyEntity && polyEntity.type === 'polyline') {
+      expect(polyEntity.layer).toBe('자전거도로');
+      expect(polyEntity.vertices.length).toBe(2);
+    }
+  });
+
+  it('사용자 실제 오수계획평면도_2공구_simple.dxf 파일이 있으면 4400개 이상 전체 엔티티를 로드한다', async () => {
+    const fs = await import('fs');
+    const filePath = 'G:\\내 드라이브\\Work\\P송산그린시티1-2공구_우오수공사\\01_도면\\오수계획평면도_2공구_simple.dxf';
+    if (!fs.existsSync(filePath)) return;
+
+    const text = fs.readFileSync(filePath, 'utf-8');
+    const res = parseDxf(text, '오수계획평면도_2공구_simple.dxf');
+
+    expect(res.stats.total).toBeGreaterThan(4400);
+    expect(res.stats.polylines).toBeGreaterThan(3100);
+    expect(res.stats.texts).toBeGreaterThan(800);
+    expect(res.layers).toContain('--DH-도로망수정');
+    expect(res.layers).toContain('2_자전거도로');
+    expect(res.layers).toContain('2_보도');
+    expect(res.layers).toContain('오수맨홀(2공구)');
+  });
 });

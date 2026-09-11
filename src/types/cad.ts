@@ -2,7 +2,7 @@
  * CAD 벡터 객체 (선, 폴리라인, 원, 호) 타입 정의
  */
 
-export type CadEntityType = 'line' | 'polyline' | 'circle' | 'arc';
+export type CadEntityType = 'line' | 'polyline' | 'circle' | 'arc' | 'text';
 
 export interface CadLine {
   type: 'line';
@@ -44,7 +44,18 @@ export interface CadArc {
   color?: string;
 }
 
-export type CadEntity = CadLine | CadPolyline | CadCircle | CadArc;
+export interface CadText {
+  type: 'text';
+  id: string;
+  layer: string;
+  position: [number, number]; // [CAD X, CAD Y]
+  text: string;               // 문자열 내용
+  height?: number;            // 문자 높이 (m)
+  rotation?: number;          // 회전각 (도)
+  color?: string;
+}
+
+export type CadEntity = CadLine | CadPolyline | CadCircle | CadArc | CadText;
 
 export interface CadLayerSummary {
   name: string;
@@ -69,5 +80,6 @@ export interface CadDrawingData {
     polylines: number;
     circles: number;
     arcs: number;
+    texts?: number;
   };
 }
