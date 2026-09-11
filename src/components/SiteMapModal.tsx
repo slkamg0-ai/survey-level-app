@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   X, MapPin, Layers, Navigation, Upload, Crosshair,
-  Maximize2, RotateCw, Eye, Sparkles, Check, Compass, Sliders, ChevronDown
+  Maximize2, RotateCw, Eye, Sparkles, Check, Compass, Sliders, ChevronDown,
+  FileCode, Trash2
 } from 'lucide-react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -11,6 +12,8 @@ import {
   haversineM, calibrateBlueprint2Points, ImagePoint, HelmertCalibrationResult
 } from '../utils/geo';
 import { parseNum } from '../utils/storage';
+import { CadDrawingData, CadEntity } from '../types/cad';
+import { parseDxf, parseCadText, arcToVertices, createCadDrawingData } from '../utils/dxfParser';
 
 interface Props {
   isOpen: boolean;
@@ -25,6 +28,7 @@ interface Props {
 
 const STORAGE_MAP_CRS = 'survey_map_crs_v1';
 const STORAGE_OVERLAY_CONFIG = 'survey_blueprint_overlay_v1';
+const STORAGE_CAD_DATA = 'survey_cad_vector_data_v1';
 
 interface SavedOverlayConfig {
   crs: SupportedCRS;
@@ -47,6 +51,7 @@ export const SiteMapModal: React.FC<Props> = ({
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
+  const cadVectorLayerRef = useRef<L.LayerGroup | null>(null);
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
   const spanPolylineRef = useRef<L.Polyline | null>(null);
   const imageOverlayRef = useRef<L.ImageOverlay | null>(null);
@@ -73,7 +78,20 @@ export const SiteMapModal: React.FC<Props> = ({
   const [opacity, setOpacity] = useState(0.75);
   const [overlayBounds, setOverlayBounds] = useState<L.LatLngBoundsExpression | null>(null);
   const [showConfigPanel, setShowConfigPanel] = useState(false);
-  const [activeTab, setActiveTab] = useState<'crs' | 'calibrate' | 'adjust'>('crs');
+  const [activeTab, setActiveTab] = useState<'crs' | 'cad' | 'calibrate' | 'adjust'>('crs');
+
+  // CAD 벡터 데이터 (선, 폴리라인, 원, 호)
+  const [cadData, setCadData] = useState<CadDrawingData | null>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_CAD_DATA);
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [cadStrokeWidth, setCadStrokeWidth] = useState<number>(2.5);
+  const [showTextInputModal, setShowTextInputModal] = useState(false);
+  const [textInputContent, setTextInputContent] = useState('');
 
   // 2점 캘리브레이션 제어점
   const [calibStep, setCalibStep] = useState<'idle' | 'pick_p1' | 'pick_p2'>('idle');
@@ -82,6 +100,19 @@ export const SiteMapModal: React.FC<Props> = ({
 
   // 미세 조정 (수동 이동/스케일)
   const [adjustOffset, setAdjustOffset] = useState({ dx: 0, dy: 0, scale: 1, rot: 0 });
+
+  // CAD 데이터 변경 시 로컬스토리지 저장
+  useEffect(() => {
+    if (cadData) {
+      try {
+        localStorage.setItem(STORAGE_CAD_DATA, JSON.stringify(cadData));
+      } catch (e) {
+        console.warn('CAD 데이터 저장 실패:', e);
+      }
+    } else {
+      localStorage.removeItem(STORAGE_CAD_DATA);
+    }
+  }, [cadData]);
 
   // 1. 초기 로컬 설정 불러오기
   useEffect(() => {
@@ -145,6 +176,7 @@ export const SiteMapModal: React.FC<Props> = ({
       L.control.zoom({ position: 'bottomright' }).addTo(map);
 
       mapInstanceRef.current = map;
+      cadVectorLayerRef.current = L.layerGroup().addTo(map);
       markersLayerRef.current = L.layerGroup().addTo(map);
     }
 
@@ -197,9 +229,115 @@ export const SiteMapModal: React.FC<Props> = ({
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
+        cadVectorLayerRef.current = null;
+        markersLayerRef.current = null;
       }
     };
   }, []);
+
+  // 3-0. CAD 벡터 도면 (선, 폴리라인, 원, 호) 렌더링
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    const cadLayer = cadVectorLayerRef.current;
+    if (!map || !cadLayer) return;
+
+    cadLayer.clearLayers();
+    if (!cadData || !cadData.entities || cadData.entities.length === 0) return;
+
+    cadData.entities.forEach(entity => {
+      // 도면층(Layer) 가시성 확인
+      const isVisible = cadData.visibleLayers[entity.layer] !== false;
+      if (!isVisible) return;
+
+      const layerColor = cadData.layerColors[entity.layer] || entity.color || '#3B82F6';
+
+      try {
+        if (entity.type === 'line') {
+          const p1 = toLatLng(entity.start[0], entity.start[1], crs);
+          const p2 = toLatLng(entity.end[0], entity.end[1], crs);
+          if (!p1 || !p2) return;
+
+          const poly = L.polyline(
+            [[p1.lat, p1.lng], [p2.lat, p2.lng]],
+            {
+              color: entity.color || layerColor,
+              weight: cadStrokeWidth,
+              opacity: 0.85
+            }
+          );
+          poly.bindTooltip(
+            `📐 <b>[선 (Line)]</b><br/>도면층: <b>${entity.layer}</b><br/>길이: <b>${entity.lengthM !== undefined ? entity.lengthM.toFixed(2) : '-'}m</b>`,
+            { sticky: true, className: 'cad-vector-tooltip' }
+          );
+          cadLayer.addLayer(poly);
+        } else if (entity.type === 'polyline') {
+          const latlngs: [number, number][] = [];
+          for (const v of entity.vertices) {
+            const ll = toLatLng(v[0], v[1], crs);
+            if (ll) latlngs.push([ll.lat, ll.lng]);
+          }
+          if (latlngs.length < 2) return;
+
+          if (entity.closed && latlngs.length > 2) {
+            const first = latlngs[0];
+            const last = latlngs[latlngs.length - 1];
+            if (first[0] !== last[0] || first[1] !== last[1]) {
+              latlngs.push(first);
+            }
+          }
+
+          const poly = L.polyline(latlngs, {
+            color: entity.color || layerColor,
+            weight: cadStrokeWidth,
+            opacity: 0.85
+          });
+          poly.bindTooltip(
+            `📐 <b>[폴리라인 (Polyline)]</b><br/>도면층: <b>${entity.layer}</b><br/>연장: <b>${entity.lengthM !== undefined ? entity.lengthM.toFixed(2) : '-'}m</b><br/>정점수: ${entity.vertices.length}개`,
+            { sticky: true, className: 'cad-vector-tooltip' }
+          );
+          cadLayer.addLayer(poly);
+        } else if (entity.type === 'circle') {
+          const centerLL = toLatLng(entity.center[0], entity.center[1], crs);
+          if (!centerLL) return;
+
+          const circle = L.circle([centerLL.lat, centerLL.lng], {
+            radius: entity.radius,
+            color: entity.color || layerColor,
+            weight: cadStrokeWidth,
+            fillColor: entity.color || layerColor,
+            fillOpacity: 0.1,
+            opacity: 0.85
+          });
+          circle.bindTooltip(
+            `⭕ <b>[원 (Circle)]</b><br/>도면층: <b>${entity.layer}</b><br/>반경: <b>R ${entity.radius.toFixed(2)}m</b><br/>직경: <b>D ${(entity.radius * 2).toFixed(2)}m</b>`,
+            { sticky: true, className: 'cad-vector-tooltip' }
+          );
+          cadLayer.addLayer(circle);
+        } else if (entity.type === 'arc') {
+          const pts = arcToVertices(entity.center, entity.radius, entity.startAngle, entity.endAngle, 32);
+          const latlngs: [number, number][] = [];
+          for (const p of pts) {
+            const ll = toLatLng(p[0], p[1], crs);
+            if (ll) latlngs.push([ll.lat, ll.lng]);
+          }
+          if (latlngs.length < 2) return;
+
+          const poly = L.polyline(latlngs, {
+            color: entity.color || layerColor,
+            weight: cadStrokeWidth,
+            opacity: 0.85
+          });
+          poly.bindTooltip(
+            `🌙 <b>[호 (Arc)]</b><br/>도면층: <b>${entity.layer}</b><br/>반경: <b>R ${entity.radius.toFixed(2)}m</b><br/>각도: ${entity.startAngle.toFixed(1)}° ~ ${entity.endAngle.toFixed(1)}°`,
+            { sticky: true, className: 'cad-vector-tooltip' }
+          );
+          cadLayer.addLayer(poly);
+        }
+      } catch (err) {
+        console.warn('CAD 객체 렌더링 건너뜀:', err);
+      }
+    });
+  }, [cadData, crs, cadStrokeWidth]);
 
   // 3-1. 시점 및 종점 맨홀 간 관로 연결선 (Polyline) 렌더링
   useEffect(() => {
@@ -473,6 +611,121 @@ export const SiteMapModal: React.FC<Props> = ({
       return;
     }
     mapInstanceRef.current.setView([myLocation.lat, myLocation.lng], 18, { animate: true });
+  };
+
+  // CAD 도면 영역으로 지도 확대/이동
+  const fitCadBounds = (targetCad: CadDrawingData | null = cadData) => {
+    const map = mapInstanceRef.current;
+    if (!map || !targetCad || !targetCad.entities || targetCad.entities.length === 0) return;
+
+    const latlngs: [number, number][] = [];
+    targetCad.entities.forEach(e => {
+      if (targetCad.visibleLayers[e.layer] === false) return;
+      if (e.type === 'line') {
+        const p1 = toLatLng(e.start[0], e.start[1], crs);
+        const p2 = toLatLng(e.end[0], e.end[1], crs);
+        if (p1) latlngs.push([p1.lat, p1.lng]);
+        if (p2) latlngs.push([p2.lat, p2.lng]);
+      } else if (e.type === 'polyline') {
+        e.vertices.forEach(v => {
+          const p = toLatLng(v[0], v[1], crs);
+          if (p) latlngs.push([p.lat, p.lng]);
+        });
+      } else if (e.type === 'circle' || e.type === 'arc') {
+        const c = toLatLng(e.center[0], e.center[1], crs);
+        if (c) latlngs.push([c.lat, c.lng]);
+      }
+    });
+
+    if (latlngs.length > 0) {
+      const bounds = L.latLngBounds(latlngs);
+      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 18 });
+      onToast('📐 CAD 도면 영역으로 지도를 이동했습니다.');
+    } else {
+      onToast('표시 가능한 CAD 좌표가 없습니다 (좌표계 확인 필요)');
+    }
+  };
+
+  // CAD DXF 파일 업로드 핸들러
+  const handleCadDxfUpload = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const text = e.target?.result as string;
+        if (!text) {
+          onToast('파일을 읽을 수 없습니다.');
+          return;
+        }
+        const parsed = parseDxf(text, file.name);
+        if (!parsed.entities || parsed.entities.length === 0) {
+          onToast('⚠️ 파일에서 선(LINE/POLYLINE) 또는 원(CIRCLE/ARC) 객체를 찾지 못했습니다.');
+          return;
+        }
+        setCadData(parsed);
+        onToast(`📐 CAD 도면 추가 완료: 객체 ${parsed.entities.length}개 (${parsed.layers.length}개 레이어)`);
+        setTimeout(() => fitCadBounds(parsed), 250);
+      } catch (err) {
+        console.error('DXF 파싱 오류:', err);
+        onToast('DXF 파일 파싱 중 오류가 발생했습니다.');
+      }
+    };
+    reader.readAsText(file, 'utf-8');
+  };
+
+  // 직접 입력 텍스트 CAD 데이터 적용
+  const handleApplyCadText = () => {
+    if (!textInputContent.trim()) {
+      onToast('좌표 데이터를 입력해주세요.');
+      return;
+    }
+    try {
+      const entities = parseCadText(textInputContent);
+      if (entities.length === 0) {
+        onToast('⚠️ 유효한 선 또는 원 좌표 데이터를 찾을 수 없습니다.');
+        return;
+      }
+      const newDrawing = createCadDrawingData(entities, '직접입력_도면');
+      setCadData(newDrawing);
+      setShowTextInputModal(false);
+      setTextInputContent('');
+      onToast(`📐 CAD 객체 ${entities.length}개 추가 완료`);
+      setTimeout(() => fitCadBounds(newDrawing), 250);
+    } catch (err) {
+      console.error(err);
+      onToast('데이터 적용 중 오류가 발생했습니다.');
+    }
+  };
+
+  // CAD 레이어 가시성 켜기/끄기
+  const toggleCadLayer = (layerName: string) => {
+    if (!cadData) return;
+    setCadData(prev => {
+      if (!prev) return null;
+      const currentVal = prev.visibleLayers[layerName] !== false;
+      return {
+        ...prev,
+        visibleLayers: {
+          ...prev.visibleLayers,
+          [layerName]: !currentVal
+        }
+      };
+    });
+  };
+
+  // 모든 CAD 레이어 한 번에 켜기/끄기
+  const setAllCadLayers = (visible: boolean) => {
+    if (!cadData) return;
+    setCadData(prev => {
+      if (!prev) return null;
+      const nextVisible: Record<string, boolean> = {};
+      prev.layers.forEach(l => {
+        nextVisible[l] = visible;
+      });
+      return {
+        ...prev,
+        visibleLayers: nextVisible
+      };
+    });
   };
 
   // 6. 도면 파일 업로드 핸들러
@@ -876,7 +1129,7 @@ export const SiteMapModal: React.FC<Props> = ({
             </div>
 
             {/* 탭 네비게이션 */}
-            <div style={{ display: 'flex', background: 'var(--surface-2)', borderRadius: '8px', padding: '3px' }}>
+            <div style={{ display: 'flex', background: 'var(--surface-2)', borderRadius: '8px', padding: '3px', gap: '3px' }}>
               <button
                 type="button"
                 style={{
@@ -892,12 +1145,45 @@ export const SiteMapModal: React.FC<Props> = ({
                 }}
                 onClick={() => setActiveTab('crs')}
               >
-                좌표계 선택
+                좌표계
               </button>
               <button
                 type="button"
                 style={{
-                  flex: 1,
+                  flex: 1.3,
+                  padding: '6px 2px',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  border: 'none',
+                  borderRadius: '6px',
+                  background: activeTab === 'cad' ? 'var(--surface)' : 'transparent',
+                  color: activeTab === 'cad' ? 'var(--primary)' : 'var(--ink-2)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '4px'
+                }}
+                onClick={() => setActiveTab('cad')}
+              >
+                <span>📐 CAD 객체</span>
+                {cadData && (
+                  <span style={{
+                    fontSize: '9.5px',
+                    padding: '1px 5px',
+                    borderRadius: '8px',
+                    background: 'var(--primary)',
+                    color: 'white',
+                    lineHeight: 1.2
+                  }}>
+                    {cadData.entities.length}
+                  </span>
+                )}
+              </button>
+              <button
+                type="button"
+                style={{
+                  flex: 1.1,
                   padding: '6px 2px',
                   fontSize: '11px',
                   fontWeight: 700,
@@ -909,7 +1195,7 @@ export const SiteMapModal: React.FC<Props> = ({
                 }}
                 onClick={() => setActiveTab('calibrate')}
               >
-                2점 정합(보정)
+                2점 정합
               </button>
             </div>
 
@@ -955,7 +1241,266 @@ export const SiteMapModal: React.FC<Props> = ({
               </div>
             )}
 
-            {/* 탭 2: 2점 기준점 헬머트 정합 (도면 좌표계가 틀리거나 모를 때) */}
+            {/* 탭 2: CAD 벡터 객체 (선/폴리라인/원/호) 관리 */}
+            {activeTab === 'cad' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ fontSize: '11.5px', color: 'var(--ink-2)', lineHeight: 1.4 }}>
+                  CAD 도면(.dxf)의 <b>도로선, 관로선, 경계선, 원형 맨홀/구조물</b>을 실제 좌표로 지도 위에 직접 표시합니다.
+                </div>
+
+                {/* 도면 추가 버튼 그룹 */}
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <label
+                    className="btn primary mini"
+                    style={{
+                      flex: 1,
+                      padding: '8px 6px',
+                      fontSize: '11.5px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    <FileCode size={14} />
+                    <span>DXF 파일 추가</span>
+                    <input
+                      type="file"
+                      accept=".dxf"
+                      style={{ display: 'none' }}
+                      onChange={e => {
+                        const f = e.target.files?.[0];
+                        if (f) handleCadDxfUpload(f);
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
+
+                  <button
+                    type="button"
+                    className="btn mini"
+                    style={{
+                      flex: 1,
+                      padding: '8px 6px',
+                      fontSize: '11.5px',
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '4px'
+                    }}
+                    onClick={() => setShowTextInputModal(true)}
+                  >
+                    <Sliders size={14} />
+                    <span>좌표 직접 입력</span>
+                  </button>
+                </div>
+
+                {/* 탑재된 CAD 도면 정보 카드 */}
+                {cadData ? (
+                  <div style={{
+                    background: 'var(--surface-2)',
+                    border: '1px solid var(--line)',
+                    borderRadius: '8px',
+                    padding: '10px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
+                        <span style={{ fontWeight: 800, fontSize: '12.5px', color: 'var(--ink)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                          📄 {cadData.fileName}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                        <button
+                          type="button"
+                          className="btn mini"
+                          style={{ padding: '4px 7px', fontSize: '10.5px' }}
+                          onClick={() => fitCadBounds()}
+                          title="CAD 도면 위치로 확대"
+                        >
+                          <Maximize2 size={12} /> 위치이동
+                        </button>
+                        <button
+                          type="button"
+                          className="btn mini"
+                          style={{ padding: '4px 7px', fontSize: '10.5px', color: 'var(--danger)', borderColor: 'var(--danger)' }}
+                          onClick={() => {
+                            if (window.confirm('추가된 CAD 도면 객체를 모두 삭제하시겠습니까?')) {
+                              setCadData(null);
+                              onToast('CAD 도면 데이터를 삭제했습니다.');
+                            }
+                          }}
+                          title="CAD 도면 삭제"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 객체 통계 배지 */}
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', fontSize: '11px' }}>
+                      <span style={{ background: 'var(--surface)', padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--line)' }}>
+                        총 객체: <b>{cadData.stats.total}개</b>
+                      </span>
+                      {cadData.stats.lines > 0 && (
+                        <span style={{ background: 'var(--surface)', padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--line)' }}>
+                          선(Line): <b>{cadData.stats.lines}</b>
+                        </span>
+                      )}
+                      {cadData.stats.polylines > 0 && (
+                        <span style={{ background: 'var(--surface)', padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--line)' }}>
+                          폴리라인: <b>{cadData.stats.polylines}</b>
+                        </span>
+                      )}
+                      {cadData.stats.circles > 0 && (
+                        <span style={{ background: 'var(--surface)', padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--line)' }}>
+                          원(Circle): <b>{cadData.stats.circles}</b>
+                        </span>
+                      )}
+                      {cadData.stats.arcs > 0 && (
+                        <span style={{ background: 'var(--surface)', padding: '2px 6px', borderRadius: '4px', border: '1px solid var(--line)' }}>
+                          호(Arc): <b>{cadData.stats.arcs}</b>
+                        </span>
+                      )}
+                    </div>
+
+                    {/* 선 두께 조절 슬라이더 */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '4px', borderTop: '1px solid var(--line)' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--ink)' }}>
+                        선 두께 ({cadStrokeWidth}px)
+                      </span>
+                      <input
+                        type="range"
+                        min="1"
+                        max="6"
+                        step="0.5"
+                        value={cadStrokeWidth}
+                        onChange={e => setCadStrokeWidth(parseFloat(e.target.value))}
+                        style={{ width: '130px', cursor: 'pointer' }}
+                      />
+                    </div>
+
+                    {/* 도면층(Layer) 목록 및 ON/OFF 토글 */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '2px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--ink)' }}>
+                          도면층(Layer) 제어 ({cadData.layers.length}개)
+                        </span>
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                          <button
+                            type="button"
+                            style={{ background: 'none', border: 'none', fontSize: '10.5px', color: 'var(--primary)', cursor: 'pointer', padding: '0 2px' }}
+                            onClick={() => setAllCadLayers(true)}
+                          >
+                            전체켬
+                          </button>
+                          <span style={{ color: 'var(--line)', fontSize: '10px' }}>|</span>
+                          <button
+                            type="button"
+                            style={{ background: 'none', border: 'none', fontSize: '10.5px', color: 'var(--ink-3)', cursor: 'pointer', padding: '0 2px' }}
+                            onClick={() => setAllCadLayers(false)}
+                          >
+                            전체끔
+                          </button>
+                        </div>
+                      </div>
+
+                      <div style={{
+                        maxHeight: '140px',
+                        overflowY: 'auto',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '4px',
+                        background: 'var(--surface)',
+                        borderRadius: '6px',
+                        padding: '6px',
+                        border: '1px solid var(--line)'
+                      }}>
+                        {cadData.layers.map(layerName => {
+                          const isVis = cadData.visibleLayers[layerName] !== false;
+                          const color = cadData.layerColors[layerName] || '#3B82F6';
+                          const count = cadData.entities.filter(e => e.layer === layerName).length;
+
+                          return (
+                            <label
+                              key={layerName}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                fontSize: '11px',
+                                padding: '3px 4px',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                background: isVis ? 'transparent' : 'rgba(0,0,0,0.03)',
+                                opacity: isVis ? 1 : 0.45
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={isVis}
+                                  onChange={() => toggleCadLayer(layerName)}
+                                  style={{ cursor: 'pointer' }}
+                                />
+                                <span
+                                  style={{
+                                    width: '10px',
+                                    height: '10px',
+                                    borderRadius: '2px',
+                                    background: color,
+                                    flexShrink: 0
+                                  }}
+                                />
+                                <span style={{
+                                  textOverflow: 'ellipsis',
+                                  overflow: 'hidden',
+                                  whiteSpace: 'nowrap',
+                                  maxWidth: '170px',
+                                  fontWeight: isVis ? 600 : 400
+                                }}>
+                                  {layerName}
+                                </span>
+                              </div>
+                              <span style={{ fontSize: '10px', color: 'var(--ink-3)' }}>
+                                {count}개
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{
+                    background: 'var(--surface-2)',
+                    border: '1px dashed var(--line)',
+                    borderRadius: '8px',
+                    padding: '16px 12px',
+                    textAlign: 'center',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}>
+                    <FileCode size={28} className="text-gray-400" />
+                    <div style={{ fontWeight: 700, fontSize: '12px', color: 'var(--ink)' }}>
+                      등록된 CAD 도면 객체가 없습니다
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--ink-2)', lineHeight: 1.4 }}>
+                      AutoCAD/지적도면에서 <b>.dxf (R12 또는 2000~2018 ASCII)</b>로 내보낸 파일을 열거나, 좌표 텍스트를 직접 붙여넣으세요.
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 탭 3: 2점 기준점 헬머트 정합 (도면 좌표계가 틀리거나 모를 때) */}
             {activeTab === 'calibrate' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <div style={{ background: 'var(--surface-2)', padding: '10px', borderRadius: '8px', fontSize: '11.5px', color: 'var(--ink)', lineHeight: 1.4 }}>
@@ -1226,6 +1771,105 @@ export const SiteMapModal: React.FC<Props> = ({
           </div>
         )}
       </div>
+
+      {/* 5. CAD 텍스트 직접 입력 모달 대화상자 */}
+      {showTextInputModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 2000,
+            background: 'rgba(0,0,0,0.65)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px'
+          }}
+        >
+          <div
+            style={{
+              background: 'var(--surface)',
+              borderRadius: '12px',
+              border: '1px solid var(--line)',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
+              width: '100%',
+              maxWidth: '480px',
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+              padding: '16px',
+              gap: '12px'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Sliders size={18} className="text-blue-600" />
+                <span style={{ fontWeight: 800, fontSize: '14px', color: 'var(--ink)' }}>
+                  CAD 좌표 데이터 직접 입력
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowTextInputModal(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-2)' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ fontSize: '11.5px', color: 'var(--ink-2)', lineHeight: 1.5, background: 'var(--surface-2)', padding: '10px', borderRadius: '8px' }}>
+              <b>💡 입력 가능 형식 (쉼표, 탭, 공백 구분):</b><br />
+              • <b>선 (Line):</b> <code>LINE, 레이어명, X1, Y1, X2, Y2</code> 또는 <code>X1, Y1, X2, Y2</code><br />
+              • <b>원 (Circle):</b> <code>CIRCLE, 레이어명, X, Y, 반지름(R)</code><br />
+              <i>※ 좌표는 현재 선택된 좌표계({crs}) 기준 미터(m) 단위입니다.</i>
+            </div>
+
+            <textarea
+              style={{
+                width: '100%',
+                height: '160px',
+                padding: '10px',
+                fontSize: '12px',
+                fontFamily: 'monospace',
+                borderRadius: '8px',
+                border: '1px solid var(--line)',
+                background: 'var(--bg)',
+                color: 'var(--ink)',
+                resize: 'vertical'
+              }}
+              placeholder={`예시:
+LINE, 도로중심선, 181200.5, 412300.0, 181350.2, 412400.0
+CIRCLE, 맨홀외경, 181200.5, 412300.0, 1.2
+181250, 412320, 181280, 412360`}
+              value={textInputContent}
+              onChange={e => setTextInputContent(e.target.value)}
+            />
+
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                className="btn"
+                style={{ padding: '8px 14px', fontSize: '12px' }}
+                onClick={() => {
+                  setShowTextInputModal(false);
+                  setTextInputContent('');
+                }}
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                className="btn primary"
+                style={{ padding: '8px 16px', fontSize: '12px', fontWeight: 700 }}
+                onClick={handleApplyCadText}
+              >
+                도면에 추가 적용
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

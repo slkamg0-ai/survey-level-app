@@ -1,3 +1,3 @@
-export const APP_VERSION = 'v3.2.3';
-export const APP_BUILD_DATE = '2026-09-06';
-export const APP_CHANGELOG = '현장 및 맨홀 구간 수시 전환 시 실측값 잔여 데이터 누출 방지(spanKeyOf 맨홀쌍 기반 고유 격리 및 이전 구간 실측값 보존), 공정별 검측값 완전 독립화';
+export const APP_VERSION = 'v3.3.0';
+export const APP_BUILD_DATE = '2026-09-11';
+export const APP_CHANGELOG = 'CAD 도면 선(Line/Polyline) 및 원(Circle/Arc) 벡터 객체 지도뷰어 직접 추가 및 시각화 기능 탑재 (DXF 파서 및 좌표 텍스트 직접 입력, 레이어별 On/Off, 선두께 조절, 툴팁 연장/반경 정보)';
