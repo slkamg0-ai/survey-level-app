@@ -598,6 +598,30 @@ td.grade { color: var(--ink-2); }
 
 .meas-input::placeholder { color: var(--ink-3); font-weight: 400; }
 
+/* 표준레벨야장 행 안의 소형 부호(±) 토글 — meas-input 옆에 붙는 좁은 버튼.
+   inputMode="decimal" 키패드에 "-" 키가 없는 기기에서도 음수 입력을 보장한다. */
+.meas-cell { display: flex; align-items: stretch; gap: 2px; }
+.meas-cell .meas-input { flex: 1; min-width: 0; }
+
+.sign-toggle {
+  flex: none;
+  width: 20px;
+  min-height: 34px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font: 700 13px/1 var(--mono);
+  cursor: pointer;
+}
+
+.sign-toggle[aria-pressed="true"] {
+  background: var(--cut);
+  border-color: var(--cut);
+  color: #FFFFFF;
+}
+
 .judge {
   display: inline-flex;
   align-items: baseline;

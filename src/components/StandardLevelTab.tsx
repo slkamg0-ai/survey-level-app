@@ -214,6 +214,33 @@ export const StandardLevelTab: React.FC<Props> = ({ onUpdateHeader, onToast, loa
     }));
   };
 
+  // 부호 (+ / −) 토글 — 최초표고/종점표고(BM)용. 해수면 근처 현장은 지반고가 음수인 경우가
+  // 많은데, inputMode="decimal" 키패드는 기기에 따라 "-" 키 자체가 없는 경우가 많아
+  // 버튼으로 직접 부호를 바꿀 수 있게 한다.
+  const toggleSign = (field: 'startBm' | 'endBm', sign: '-' | '+') => {
+    const val = (data[field] || '').trim().replace(/^[-+]/, '');
+    if (!val) {
+      setData(prev => ({ ...prev, [field]: sign === '-' ? '-' : '' }));
+      return;
+    }
+    const newVal = sign === '-' ? `-${val}` : val;
+    setData(prev => ({ ...prev, [field]: newVal }));
+  };
+
+  // 야장 행의 후시/중시/전시 부호 토글 — 같은 이유로 표 안 좁은 칸에는 소형 "±" 버튼 하나로 전환
+  const toggleRowSign = (id: string, field: 'bs' | 'is' | 'fs') => {
+    setData(prev => ({
+      ...prev,
+      rows: prev.rows.map(r => {
+        if (r.id !== id) return r;
+        const val = (r[field] || '').trim();
+        if (!val) return { ...r, [field]: '-' };
+        const next = val.startsWith('-') ? val.slice(1) : `-${val}`;
+        return { ...r, [field]: next };
+      })
+    }));
+  };
+
   const handleRowChange = (id: string, field: keyof StandardRow, val: string) => {
     setData(prev => {
       const updatedRows = prev.rows.map(r => r.id === id ? { ...r, [field]: val } : r);
@@ -431,27 +458,35 @@ export const StandardLevelTab: React.FC<Props> = ({ onUpdateHeader, onToast, loa
 
             <div className="f">
               <label>기준점(BM1) 최초표고 <i>m</i></label>
-              <div className="ctrl">
+              <div className="ctrl signed">
                 <input
                   type="text"
                   inputMode="decimal"
-                  placeholder="10.000"
+                  placeholder="-1.230"
                   value={data.startBm}
                   onChange={e => setData({ ...data, startBm: e.target.value })}
                 />
+                <div className="signseg">
+                  <button type="button" data-sign="+" aria-pressed={!data.startBm.startsWith('-')} onClick={() => toggleSign('startBm', '+')}>+</button>
+                  <button type="button" data-sign="-" aria-pressed={data.startBm.startsWith('-')} onClick={() => toggleSign('startBm', '-')}>−</button>
+                </div>
               </div>
             </div>
 
             <div className="f">
               <label>종점 알려진 표고(선택) <i>폐합오차</i></label>
-              <div className="ctrl">
+              <div className="ctrl signed">
                 <input
                   type="text"
                   inputMode="decimal"
-                  placeholder="10.000"
+                  placeholder="-1.230"
                   value={data.endBm}
                   onChange={e => setData({ ...data, endBm: e.target.value })}
                 />
+                <div className="signseg">
+                  <button type="button" data-sign="+" aria-pressed={!data.endBm.startsWith('-')} onClick={() => toggleSign('endBm', '+')}>+</button>
+                  <button type="button" data-sign="-" aria-pressed={data.endBm.startsWith('-')} onClick={() => toggleSign('endBm', '-')}>−</button>
+                </div>
               </div>
             </div>
 
@@ -571,40 +606,74 @@ export const StandardLevelTab: React.FC<Props> = ({ onUpdateHeader, onToast, loa
                     />
                   </td>
 
-                  {/* 후시 BS */}
+                  {/* 후시 BS — 부호 버튼: inputMode=decimal 키패드엔 "-" 키가 없는 기기가 많아
+                      해수면 아래 지반고가 많은 현장에서도 음수를 확실히 입력할 수 있게 함 */}
                   <td className="n" style={{ padding: '4px 2px' }}>
-                    <input
-                      type="text"
-                      className="meas-input"
-                      inputMode="decimal"
-                      placeholder="BS"
-                      value={r.bs}
-                      onChange={e => handleRowChange(r.id, 'bs', e.target.value)}
-                    />
+                    <div className="meas-cell">
+                      <input
+                        type="text"
+                        className="meas-input"
+                        inputMode="decimal"
+                        placeholder="BS"
+                        value={r.bs}
+                        onChange={e => handleRowChange(r.id, 'bs', e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        className="sign-toggle"
+                        aria-pressed={r.bs.trim().startsWith('-')}
+                        onClick={() => toggleRowSign(r.id, 'bs')}
+                        title="부호 전환 (+/−)"
+                      >
+                        ±
+                      </button>
+                    </div>
                   </td>
 
                   {/* 중시 IS */}
                   <td className="n" style={{ padding: '4px 2px' }}>
-                    <input
-                      type="text"
-                      className="meas-input"
-                      inputMode="decimal"
-                      placeholder="IS"
-                      value={r.is}
-                      onChange={e => handleRowChange(r.id, 'is', e.target.value)}
-                    />
+                    <div className="meas-cell">
+                      <input
+                        type="text"
+                        className="meas-input"
+                        inputMode="decimal"
+                        placeholder="IS"
+                        value={r.is}
+                        onChange={e => handleRowChange(r.id, 'is', e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        className="sign-toggle"
+                        aria-pressed={r.is.trim().startsWith('-')}
+                        onClick={() => toggleRowSign(r.id, 'is')}
+                        title="부호 전환 (+/−)"
+                      >
+                        ±
+                      </button>
+                    </div>
                   </td>
 
                   {/* 전시 FS */}
                   <td className="n" style={{ padding: '4px 2px' }}>
-                    <input
-                      type="text"
-                      className="meas-input"
-                      inputMode="decimal"
-                      placeholder="FS"
-                      value={r.fs}
-                      onChange={e => handleRowChange(r.id, 'fs', e.target.value)}
-                    />
+                    <div className="meas-cell">
+                      <input
+                        type="text"
+                        className="meas-input"
+                        inputMode="decimal"
+                        placeholder="FS"
+                        value={r.fs}
+                        onChange={e => handleRowChange(r.id, 'fs', e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        className="sign-toggle"
+                        aria-pressed={r.fs.trim().startsWith('-')}
+                        onClick={() => toggleRowSign(r.id, 'fs')}
+                        title="부호 전환 (+/−)"
+                      >
+                        ±
+                      </button>
+                    </div>
                   </td>
 
                   {/* 방식별 자동 계산 열 */}
