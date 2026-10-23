@@ -66,6 +66,10 @@ export const StandardLevelTab: React.FC<Props> = ({ onUpdateHeader, onToast, loa
   // 중간 시야점을 써야 하는 측점에서만 펼쳐 쓴다. 데이터는 숨겨도 그대로 남는다.
   const [showIs, setShowIs] = useState(false);
   const [keypadTarget, setKeypadTarget] = useState<KeypadTarget | null>(null);
+  // 초기화는 관로 야장표와 같은 2탭 확인 패턴 — 실측 중 실수로 한 번 눌러도 안 날아간다
+  const [armReset, setArmReset] = useState(false);
+  // 검산 요약 카드 6개가 테이블보다 먼저 시선을 가져가서, 평소엔 한 줄로 접어 둔다
+  const [showStatsDetail, setShowStatsDetail] = useState(false);
 
   useEffect(() => {
     if (loadedData) {
@@ -187,6 +191,9 @@ export const StandardLevelTab: React.FC<Props> = ({ onUpdateHeader, onToast, loa
   };
 
   const computed = computeRows();
+  const closureErrMm = data.endBm && computed.lastGh !== null
+    ? (computed.lastGh - (num(data.endBm) || 0)) * 1000
+    : null;
 
   // 헤더 업데이트
   useEffect(() => {
@@ -223,6 +230,34 @@ export const StandardLevelTab: React.FC<Props> = ({ onUpdateHeader, onToast, loa
       ...prev,
       rows: prev.rows.filter(r => r.id !== id)
     }));
+  };
+
+  // 초기화 — 관로 야장표와 같은 2탭 확인. 예시 데이터가 아니라 진짜 빈 값으로 되돌린다.
+  // 전엔 "초기화"가 DEFAULT_DATA(=예시 데이터)를 곧장 덮어써서, 실측 중 실수로 한 번
+  // 누르면 확인 없이 실측값이 낯선 샘플 숫자로 바뀌어 있었다.
+  const handleReset = () => {
+    if (!armReset) {
+      setArmReset(true);
+      setTimeout(() => setArmReset(false), 3500);
+      return;
+    }
+    setArmReset(false);
+    setData({
+      ...DEFAULT_DATA,
+      startBm: '',
+      endBm: '',
+      title: '',
+      surveyor: '',
+      mdate: new Date().toISOString().split('T')[0],
+      rows: [{ id: Date.now().toString(), point: 'BM1', bs: '', is: '', fs: '', remarks: '' }]
+    });
+    onToast('초기화되었습니다');
+  };
+
+  // 샘플 적용 — "초기화"에 섞여 있던 예시 데이터 불러오기를 분리했다
+  const handleLoadSample = () => {
+    setData(DEFAULT_DATA);
+    onToast('샘플 데이터를 적용했습니다');
   };
 
   const handleRowChange = (id: string, field: keyof StandardRow, val: string) => {
@@ -518,49 +553,74 @@ export const StandardLevelTab: React.FC<Props> = ({ onUpdateHeader, onToast, loa
         )}
       </section>
 
-      {/* 2. 검산 통계 스트립 */}
-      <section className="summary">
-        <div className="stat">
-          <b>합계 ∑BS</b>
-          <span>{fmt(computed.sumBs)}</span>
-          <em>후시 읽음 총합</em>
-        </div>
-
-        <div className="stat">
-          <b>합계 ∑FS</b>
-          <span>{fmt(computed.sumFs)}</span>
-          <em>전시 읽음 총합</em>
-        </div>
-
-        <div className="stat">
-          <b>∑BS − ∑FS</b>
-          <span>{fmt(computed.diffSight)}</span>
-          <em>표고 차이</em>
-        </div>
-
-        <div className="stat">
-          <b>최초 → 최종 표고차</b>
-          <span>{fmt(computed.diffGh)}</span>
-          <em>최종GH − 최초GH</em>
-        </div>
-
-        <div className={`stat check ${!computed.pageCheckPass ? 'bad' : ''}`}>
-          <b>야장 검산 (Page Check)</b>
-          <span style={{ fontSize: '13.5px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-            {computed.pageCheckPass ? (
-              <><CheckCircle2 size={15} /> 검산 일치</>
-            ) : (
-              <><AlertCircle size={15} /> 불일치</>
+      {/* 2. 검산 요약 — 카드 6개가 테이블보다 먼저 시선을 가져가서 평소엔 한 줄로 접어 둔다.
+          검산 일치/불일치는 안전에 관계된 신호라 접힌 상태에서도 항상 보인다 */}
+      <section className="card">
+        <div
+          className="settings-summary-bar"
+          onClick={() => setShowStatsDetail(v => !v)}
+          style={{ cursor: 'pointer', borderBottom: showStatsDetail ? undefined : 'none' }}
+        >
+          <div className="badges">
+            <span className="badge">ΣBS {fmt(computed.sumBs)}</span>
+            <span className="badge">ΣFS {fmt(computed.sumFs)}</span>
+            <span className="badge" style={{ color: computed.pageCheckPass ? 'var(--ok)' : 'var(--cut)' }}>
+              {computed.pageCheckPass ? '✓ 검산일치' : '⚠ 검산불일치'}
+            </span>
+            {closureErrMm !== null && (
+              <span className="badge">폐합 {fmt(closureErrMm, 1)}mm</span>
             )}
+          </div>
+          <span style={{ fontSize: '11px', color: 'var(--primary)', fontWeight: 600, whiteSpace: 'nowrap' }}>
+            {showStatsDetail ? '접기 ▲' : '자세히 ▼'}
           </span>
-          <em>∑BS − ∑FS = GH차이</em>
         </div>
 
-        {data.endBm && computed.lastGh !== null && (
-          <div className="stat">
-            <b>폐합 오차</b>
-            <span>{fmt((computed.lastGh - (num(data.endBm) || 0)) * 1000, 1)} mm</span>
-            <em>실측GH − 알려진GH</em>
+        {showStatsDetail && (
+          <div className="summary" style={{ border: 0, borderRadius: 0, boxShadow: 'none' }}>
+            <div className="stat">
+              <b>합계 ∑BS</b>
+              <span>{fmt(computed.sumBs)}</span>
+              <em>후시 읽음 총합</em>
+            </div>
+
+            <div className="stat">
+              <b>합계 ∑FS</b>
+              <span>{fmt(computed.sumFs)}</span>
+              <em>전시 읽음 총합</em>
+            </div>
+
+            <div className="stat">
+              <b>∑BS − ∑FS</b>
+              <span>{fmt(computed.diffSight)}</span>
+              <em>표고 차이</em>
+            </div>
+
+            <div className="stat">
+              <b>최초 → 최종 표고차</b>
+              <span>{fmt(computed.diffGh)}</span>
+              <em>최종GH − 최초GH</em>
+            </div>
+
+            <div className={`stat check ${!computed.pageCheckPass ? 'bad' : ''}`}>
+              <b>야장 검산 (Page Check)</b>
+              <span style={{ fontSize: '13.5px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                {computed.pageCheckPass ? (
+                  <><CheckCircle2 size={15} /> 검산 일치</>
+                ) : (
+                  <><AlertCircle size={15} /> 불일치</>
+                )}
+              </span>
+              <em>∑BS − ∑FS = GH차이</em>
+            </div>
+
+            {closureErrMm !== null && (
+              <div className="stat">
+                <b>폐합 오차</b>
+                <span>{fmt(closureErrMm, 1)} mm</span>
+                <em>실측GH − 알려진GH</em>
+              </div>
+            )}
           </div>
         )}
       </section>
@@ -707,15 +767,16 @@ export const StandardLevelTab: React.FC<Props> = ({ onUpdateHeader, onToast, loa
         <button type="button" className="btn" onClick={handleCopyTable}>
           <Copy size={16} /> 표 복사
         </button>
+        <button type="button" className="btn ghost" onClick={handleLoadSample}>
+          <FileSpreadsheet size={16} /> 샘플 적용
+        </button>
         <button
           type="button"
-          className="btn ghost"
-          onClick={() => {
-            setData(DEFAULT_DATA);
-            onToast('기본값으로 초기화했습니다');
-          }}
+          className={`btn ghost ${armReset ? 'danger' : ''}`}
+          data-armed={armReset}
+          onClick={handleReset}
         >
-          <RotateCcw size={16} /> 초기화
+          <RotateCcw size={16} /> {armReset ? '정말 초기화?' : '초기화'}
         </button>
       </div>
 
