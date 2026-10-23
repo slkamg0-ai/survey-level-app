@@ -2,6 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { StandardSurveyData, StandardRow, StandardMethod } from '../types/survey';
 import { Plus, Trash2, Download, Copy, RotateCcw, CheckCircle2, AlertCircle, FileSpreadsheet } from 'lucide-react';
 import { mergeWithDefaults, readStored, parseNum } from '../utils/storage';
+import { NumericKeypad } from './NumericKeypad';
+
+/** 지금 숫자 키패드가 편집 중인 대상 — 설정의 표고 둘, 또는 야장 행의 BS/IS/FS 중 하나 */
+type KeypadTarget =
+  | { kind: 'start' }
+  | { kind: 'end' }
+  | { kind: 'row'; id: string; field: 'bs' | 'is' | 'fs' };
 
 interface Props {
   onUpdateHeader: (secName: string, ihVal: string, ihSub: string) => void;
@@ -55,6 +62,10 @@ export const StandardLevelTab: React.FC<Props> = ({ onUpdateHeader, onToast, loa
   );
 
   const [showSettings, setShowSettings] = useState(false);
+  // 중시(IS)는 기본 숨김 — 평소엔 NO/BS/FS/IH/GH만 보여 칸이 안 뭉치고,
+  // 중간 시야점을 써야 하는 측점에서만 펼쳐 쓴다. 데이터는 숨겨도 그대로 남는다.
+  const [showIs, setShowIs] = useState(false);
+  const [keypadTarget, setKeypadTarget] = useState<KeypadTarget | null>(null);
 
   useEffect(() => {
     if (loadedData) {
@@ -214,33 +225,6 @@ export const StandardLevelTab: React.FC<Props> = ({ onUpdateHeader, onToast, loa
     }));
   };
 
-  // 부호 (+ / −) 토글 — 최초표고/종점표고(BM)용. 해수면 근처 현장은 지반고가 음수인 경우가
-  // 많은데, inputMode="decimal" 키패드는 기기에 따라 "-" 키 자체가 없는 경우가 많아
-  // 버튼으로 직접 부호를 바꿀 수 있게 한다.
-  const toggleSign = (field: 'startBm' | 'endBm', sign: '-' | '+') => {
-    const val = (data[field] || '').trim().replace(/^[-+]/, '');
-    if (!val) {
-      setData(prev => ({ ...prev, [field]: sign === '-' ? '-' : '' }));
-      return;
-    }
-    const newVal = sign === '-' ? `-${val}` : val;
-    setData(prev => ({ ...prev, [field]: newVal }));
-  };
-
-  // 야장 행의 후시/중시/전시 부호 토글 — 같은 이유로 표 안 좁은 칸에는 소형 "±" 버튼 하나로 전환
-  const toggleRowSign = (id: string, field: 'bs' | 'is' | 'fs') => {
-    setData(prev => ({
-      ...prev,
-      rows: prev.rows.map(r => {
-        if (r.id !== id) return r;
-        const val = (r[field] || '').trim();
-        if (!val) return { ...r, [field]: '-' };
-        const next = val.startsWith('-') ? val.slice(1) : `-${val}`;
-        return { ...r, [field]: next };
-      })
-    }));
-  };
-
   const handleRowChange = (id: string, field: keyof StandardRow, val: string) => {
     setData(prev => {
       const updatedRows = prev.rows.map(r => r.id === id ? { ...r, [field]: val } : r);
@@ -271,6 +255,29 @@ export const StandardLevelTab: React.FC<Props> = ({ onUpdateHeader, onToast, loa
         rows: updatedRows
       };
     });
+  };
+
+  // 숫자 키패드 ↔ 실제 필드 연결. 행 필드는 기존 handleRowChange 를 그대로 타서
+  // "마지막 행에 값이 들어오면 다음 행 자동 추가" 동작이 네이티브 입력과 똑같이 유지된다.
+  const FIELD_LABEL: Record<'bs' | 'is' | 'fs', string> = { bs: '후시(BS)', is: '중시(IS)', fs: '전시(FS)' };
+
+  const keypadLabel = (t: KeypadTarget): string => {
+    if (t.kind === 'start') return '기준점(BM1) 최초표고';
+    if (t.kind === 'end') return '종점 알려진 표고';
+    const row = data.rows.find(r => r.id === t.id);
+    return `${row?.point || '측점'} · ${FIELD_LABEL[t.field]}`;
+  };
+
+  const keypadValue = (t: KeypadTarget): string => {
+    if (t.kind === 'start') return data.startBm;
+    if (t.kind === 'end') return data.endBm;
+    return data.rows.find(r => r.id === t.id)?.[t.field] || '';
+  };
+
+  const keypadChange = (t: KeypadTarget, next: string) => {
+    if (t.kind === 'start') { setData(prev => ({ ...prev, startBm: next })); return; }
+    if (t.kind === 'end') { setData(prev => ({ ...prev, endBm: next })); return; }
+    handleRowChange(t.id, t.field, next);
   };
 
   // CSV 생성 (동적 엑셀 수식 포함)
@@ -458,35 +465,29 @@ export const StandardLevelTab: React.FC<Props> = ({ onUpdateHeader, onToast, loa
 
             <div className="f">
               <label>기준점(BM1) 최초표고 <i>m</i></label>
-              <div className="ctrl signed">
+              <div className="ctrl">
                 <input
                   type="text"
-                  inputMode="decimal"
+                  inputMode="none"
+                  readOnly
                   placeholder="-1.230"
                   value={data.startBm}
-                  onChange={e => setData({ ...data, startBm: e.target.value })}
+                  onFocus={() => setKeypadTarget({ kind: 'start' })}
                 />
-                <div className="signseg">
-                  <button type="button" data-sign="+" aria-pressed={!data.startBm.startsWith('-')} onClick={() => toggleSign('startBm', '+')}>+</button>
-                  <button type="button" data-sign="-" aria-pressed={data.startBm.startsWith('-')} onClick={() => toggleSign('startBm', '-')}>−</button>
-                </div>
               </div>
             </div>
 
             <div className="f">
               <label>종점 알려진 표고(선택) <i>폐합오차</i></label>
-              <div className="ctrl signed">
+              <div className="ctrl">
                 <input
                   type="text"
-                  inputMode="decimal"
+                  inputMode="none"
+                  readOnly
                   placeholder="-1.230"
                   value={data.endBm}
-                  onChange={e => setData({ ...data, endBm: e.target.value })}
+                  onFocus={() => setKeypadTarget({ kind: 'end' })}
                 />
-                <div className="signseg">
-                  <button type="button" data-sign="+" aria-pressed={!data.endBm.startsWith('-')} onClick={() => toggleSign('endBm', '+')}>+</button>
-                  <button type="button" data-sign="-" aria-pressed={data.endBm.startsWith('-')} onClick={() => toggleSign('endBm', '-')}>−</button>
-                </div>
               </div>
             </div>
 
@@ -568,28 +569,39 @@ export const StandardLevelTab: React.FC<Props> = ({ onUpdateHeader, onToast, loa
       <section className="card">
         <h2>
           측량 야장표
-          <button type="button" className="mini" onClick={handleAddRow}>
-            + 행 추가
-          </button>
+          <div style={{ display: 'flex', gap: '6px' }}>
+            <button type="button" className="mini" aria-pressed={showIs} onClick={() => setShowIs(v => !v)}>
+              {showIs ? '중시(IS) 숨기기' : '중시(IS) 표시'}
+            </button>
+            <button type="button" className="mini" onClick={handleAddRow}>
+              + 행 추가
+            </button>
+          </div>
         </h2>
 
         <div className="table-wrap">
-          <table style={{ tableLayout: 'auto', width: '100%' }}>
+          {/* width:100% 를 강제하지 않는다 — 관로 야장표(TrenchSurveyTab)와 같은 패턴으로,
+              칸이 모자라면 .table-wrap 가로 스크롤이 받아내게 한다. 100%로 묶으면
+              IS 열까지 켠 6열이 좁은 폰 화면에 압축되며 숫자 끝자리가 잘린다 */}
+          <table>
             <thead>
               <tr>
+                {/* 표 auto-layout 은 <input> 의 CSS min-width 를 열 폭 계산에 안 쳐준다 —
+                    <th>/<td> 자체에 minWidth 를 줘야 "−1.230" 같은 값이 안 잘린다.
+                    모자라면 table-wrap 가로 스크롤이 받는다 (관로 야장표와 동일 패턴) */}
                 <th className="c" style={{ width: '48px', padding: '6px 2px' }}>측점</th>
-                <th className="n" style={{ padding: '6px 2px' }}>후시(BS)</th>
-                <th className="n" style={{ padding: '6px 2px' }}>중시(IS)</th>
-                <th className="n" style={{ padding: '6px 2px' }}>전시(FS)</th>
+                <th className="n" style={{ minWidth: '62px', padding: '6px 2px' }}>후시(BS)</th>
+                {showIs && <th className="n" style={{ minWidth: '62px', padding: '6px 2px' }}>중시(IS)</th>}
+                <th className="n" style={{ minWidth: '62px', padding: '6px 2px' }}>전시(FS)</th>
                 {data.method === 'ih' ? (
-                  <th className="n" style={{ padding: '6px 2px' }}>기계고(IH)</th>
+                  <th className="n" style={{ minWidth: '60px', padding: '6px 2px' }}>기계고(IH)</th>
                 ) : (
                   <>
-                    <th className="n" style={{ padding: '6px 2px' }}>승(+)</th>
-                    <th className="n" style={{ padding: '6px 2px' }}>강(−)</th>
+                    <th className="n" style={{ minWidth: '56px', padding: '6px 2px' }}>승(+)</th>
+                    <th className="n" style={{ minWidth: '56px', padding: '6px 2px' }}>강(−)</th>
                   </>
                 )}
-                <th className="n" style={{ padding: '6px 2px' }}>지반고(GH)</th>
+                <th className="n" style={{ minWidth: '62px', padding: '6px 2px' }}>지반고(GH)</th>
                 <th className="c" style={{ width: '28px', padding: '6px 0' }}></th>
               </tr>
             </thead>
@@ -606,74 +618,46 @@ export const StandardLevelTab: React.FC<Props> = ({ onUpdateHeader, onToast, loa
                     />
                   </td>
 
-                  {/* 후시 BS — 부호 버튼: inputMode=decimal 키패드엔 "-" 키가 없는 기기가 많아
-                      해수면 아래 지반고가 많은 현장에서도 음수를 확실히 입력할 수 있게 함 */}
+                  {/* 후시 BS — readOnly + 앱 자체 숫자 키패드. 네이티브 키보드를 완전히
+                      대체해 기종과 무관하게 "-"가 항상 보장된다 (NumericKeypad 참고) */}
                   <td className="n" style={{ padding: '4px 2px' }}>
-                    <div className="meas-cell">
-                      <input
-                        type="text"
-                        className="meas-input"
-                        inputMode="decimal"
-                        placeholder="BS"
-                        value={r.bs}
-                        onChange={e => handleRowChange(r.id, 'bs', e.target.value)}
-                      />
-                      <button
-                        type="button"
-                        className="sign-toggle"
-                        aria-pressed={r.bs.trim().startsWith('-')}
-                        onClick={() => toggleRowSign(r.id, 'bs')}
-                        title="부호 전환 (+/−)"
-                      >
-                        ±
-                      </button>
-                    </div>
+                    <input
+                      type="text"
+                      className="meas-input"
+                      inputMode="none"
+                      readOnly
+                      placeholder="BS"
+                      value={r.bs}
+                      onFocus={() => setKeypadTarget({ kind: 'row', id: r.id, field: 'bs' })}
+                    />
                   </td>
 
-                  {/* 중시 IS */}
-                  <td className="n" style={{ padding: '4px 2px' }}>
-                    <div className="meas-cell">
+                  {/* 중시 IS — 기본 숨김, "중시(IS) 표시" 토글로만 노출 */}
+                  {showIs && (
+                    <td className="n" style={{ padding: '4px 2px' }}>
                       <input
                         type="text"
                         className="meas-input"
-                        inputMode="decimal"
+                        inputMode="none"
+                        readOnly
                         placeholder="IS"
                         value={r.is}
-                        onChange={e => handleRowChange(r.id, 'is', e.target.value)}
+                        onFocus={() => setKeypadTarget({ kind: 'row', id: r.id, field: 'is' })}
                       />
-                      <button
-                        type="button"
-                        className="sign-toggle"
-                        aria-pressed={r.is.trim().startsWith('-')}
-                        onClick={() => toggleRowSign(r.id, 'is')}
-                        title="부호 전환 (+/−)"
-                      >
-                        ±
-                      </button>
-                    </div>
-                  </td>
+                    </td>
+                  )}
 
                   {/* 전시 FS */}
                   <td className="n" style={{ padding: '4px 2px' }}>
-                    <div className="meas-cell">
-                      <input
-                        type="text"
-                        className="meas-input"
-                        inputMode="decimal"
-                        placeholder="FS"
-                        value={r.fs}
-                        onChange={e => handleRowChange(r.id, 'fs', e.target.value)}
-                      />
-                      <button
-                        type="button"
-                        className="sign-toggle"
-                        aria-pressed={r.fs.trim().startsWith('-')}
-                        onClick={() => toggleRowSign(r.id, 'fs')}
-                        title="부호 전환 (+/−)"
-                      >
-                        ±
-                      </button>
-                    </div>
+                    <input
+                      type="text"
+                      className="meas-input"
+                      inputMode="none"
+                      readOnly
+                      placeholder="FS"
+                      value={r.fs}
+                      onFocus={() => setKeypadTarget({ kind: 'row', id: r.id, field: 'fs' })}
+                    />
                   </td>
 
                   {/* 방식별 자동 계산 열 */}
@@ -734,6 +718,15 @@ export const StandardLevelTab: React.FC<Props> = ({ onUpdateHeader, onToast, loa
           <RotateCcw size={16} /> 초기화
         </button>
       </div>
+
+      {/* BS/IS/FS, 최초표고/종점표고 전용 — 숫자 키패드 (네이티브 키보드 대체) */}
+      <NumericKeypad
+        isOpen={keypadTarget !== null}
+        label={keypadTarget ? keypadLabel(keypadTarget) : ''}
+        value={keypadTarget ? keypadValue(keypadTarget) : ''}
+        onChange={next => keypadTarget && keypadChange(keypadTarget, next)}
+        onClose={() => setKeypadTarget(null)}
+      />
     </main>
   );
 };

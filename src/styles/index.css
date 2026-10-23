@@ -584,6 +584,11 @@ td.grade { color: var(--ink-2); }
 
 .meas-input {
   width: 100%;
+  /* 표준레벨야장처럼 BS/IS/FS/IH/GH 등 열이 많은 표에서 "auto" 테이블 레이아웃이
+     칸을 48px 아래로 욱여넣으면 "-1.230" 같은 값의 끝자리가 잘려 보인다.
+     최소 폭을 지켜 칸이 그 밑으로 줄지 않게 하고, 모자라면 .table-wrap 이
+     가로 스크롤로 받아낸다 (숫자를 자르는 대신 스크롤시킨다) */
+  min-width: 52px;
   padding: 5px 3px;
   min-height: 34px;
   font: 700 15px/1.2 var(--mono);
@@ -597,30 +602,7 @@ td.grade { color: var(--ink-2); }
 }
 
 .meas-input::placeholder { color: var(--ink-3); font-weight: 400; }
-
-/* 표준레벨야장 행 안의 소형 부호(±) 토글 — meas-input 옆에 붙는 좁은 버튼.
-   inputMode="decimal" 키패드에 "-" 키가 없는 기기에서도 음수 입력을 보장한다. */
-.meas-cell { display: flex; align-items: stretch; gap: 2px; }
-.meas-cell .meas-input { flex: 1; min-width: 0; }
-
-.sign-toggle {
-  flex: none;
-  width: 20px;
-  min-height: 34px;
-  padding: 0;
-  border: 1px solid var(--line);
-  border-radius: 5px;
-  background: var(--surface-2);
-  color: var(--ink-2);
-  font: 700 13px/1 var(--mono);
-  cursor: pointer;
-}
-
-.sign-toggle[aria-pressed="true"] {
-  background: var(--cut);
-  border-color: var(--cut);
-  color: #FFFFFF;
-}
+.meas-input[readonly] { cursor: pointer; } /* 숫자 키패드로만 편집됨을 암시 */
 
 .judge {
   display: inline-flex;
@@ -1162,6 +1144,71 @@ tr.detail dd { margin: 0; color: var(--ink); font-variant-numeric: tabular-nums;
   overflow-y: auto;
   display: flex; flex-direction: column; gap: 12px;
 }
+
+/* ── 숫자 키패드 (NumericKeypad) ────────────────── */
+.keypad-backdrop { z-index: 90; } /* 다른 모달보다 위에 뜨도록 — 설정 패널 안에서도 열릴 수 있다 */
+
+.keypad-display {
+  padding: 14px 16px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-bottom: 1px solid var(--line);
+}
+
+.keypad-label {
+  font: 600 11px var(--mono);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.keypad-value {
+  font: 700 28px var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  text-align: right;
+}
+
+.keypad-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 14px 16px;
+}
+
+.keypad-key {
+  min-height: 52px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--ink);
+  font: 700 20px var(--mono);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.keypad-key:active { background: var(--line-2); }
+
+.keypad-key.minus { color: var(--cut); border-color: var(--cut); }
+
+.keypad-back {
+  grid-column: span 3;
+  min-height: 44px;
+  background: var(--surface);
+  color: var(--ink-2);
+}
+
+.keypad-actions {
+  display: flex;
+  gap: 8px;
+  padding: 0 16px calc(16px + env(safe-area-inset-bottom));
+}
+
+.keypad-actions .btn { flex: 1; min-width: 0; }
+.keypad-done { flex: 2; }
 
 .route-create { display: flex; gap: 8px; }
 .route-create input { flex: 1; }
