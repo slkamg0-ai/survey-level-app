@@ -53,6 +53,9 @@ export interface ManholeBranch {
   dia?: string;         // 관경(mm, 선택)
 }
 
+export type ManholeSystem = '우수' | '오수' | '전기' | '가스' | '상수도';
+export const MANHOLE_SYSTEMS: ManholeSystem[] = ['우수', '오수', '전기', '가스', '상수도'];
+
 export interface ManholeMasterItem {
   id: string;
   name: string;      // 맨홀 명칭 (예: MH01, MH02)
@@ -83,6 +86,16 @@ export interface ManholeMasterItem {
   branches?: ManholeBranch[];
   /** 분기정보 칸에서 파싱하지 못하고 건너뛴 조각(관저고 누락 등) — 있으면 화면에 오류로 알린다 */
   branchIssues?: string[];
+  /**
+   * 시설 종류 (우수/오수/전기/가스/상수도). 맨홀DB가 현장 단위 전역 저장소라 시설이 다른
+   * 맨홀이 한 목록에 같이 쌓인다 — 이 태그로 구분해 목록/지도/3D에서 필터링한다.
+   * 과거 데이터(이 필드가 생기기 전에 등록된 항목)는 비어 있을 수 있다.
+   */
+  system?: ManholeSystem;
+  /** 계획고(GL). 종단면도 기준값 — 3D 뷰 등에서 맨홀 높이(관저고~계획고) 표현에 쓴다 */
+  gl?: string;
+  /** 맨홀 유형 라벨 (예: 원형1호, 특2호, BOX맨홀, 집수정) — 3D 뷰에서 실제 치수 판정에 쓴다 */
+  typeLabel?: string;
 }
 
 const BRANCH_SEP = ';';
