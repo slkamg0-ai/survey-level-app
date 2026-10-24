@@ -35,10 +35,7 @@ export function loadRoutes(): SurveyRoute[] {
         id: String(r.id ?? `route-${i + 1}`),
         name: String(r.name ?? `노선 ${i + 1}`),
         manholeIds: r.manholeIds.map((v: unknown) => String(v)),
-        updatedAt: String(r.updatedAt ?? ''),
-        pipeDiaMm: Array.isArray(r.pipeDiaMm)
-          ? r.pipeDiaMm.map((v: unknown) => (typeof v === 'number' && isFinite(v) ? v : null))
-          : undefined
+        updatedAt: String(r.updatedAt ?? '')
       }));
   } catch {
     return [];
@@ -76,8 +73,7 @@ export function buildSpans(route: SurveyRoute | null, manholes: ManholeMasterIte
       end,
       coordLength,
       sheetLength,
-      length: coordLength !== null ? coordLength : sheetLength,
-      diaMm: route.pipeDiaMm?.[i] ?? null
+      length: coordLength !== null ? coordLength : sheetLength
     });
   }
   return spans;
@@ -170,13 +166,10 @@ export function parseRouteImport(
 
   list.forEach((r: any, i: number) => {
     const names: string[] = Array.isArray(r && r.manholes) ? r.manholes.map((v: any) => String(v)) : [];
-    // 도면분석 routes.json 의 diametersMm — manholes[i]~manholes[i+1] 구간 관경(mm), 없으면 구간 수 없음
-    const srcDia: unknown[] = Array.isArray(r && r.diametersMm) ? r.diametersMm : [];
     const ids: string[] = [];
-    const keptOrigIdx: number[] = []; // 살아남은 맨홀의 원래(가져오기 파일 기준) 순번
-    names.forEach((n, origIdx) => {
+    names.forEach(n => {
       const item = findManholeByName(manholes, n);
-      if (item) { ids.push(item.id); keptOrigIdx.push(origIdx); }
+      if (item) ids.push(item.id);
       else missing.add(n.trim().toUpperCase());
     });
     // 맨홀이 둘 미만이면 구간이 안 나온다
@@ -184,19 +177,11 @@ export function parseRouteImport(
       dropped++;
       return;
     }
-    // 중간 맨홀이 DB에 없어 건너뛰면 그 자리의 구간 관경은 원래 구간과 더 이상 안 맞으므로 비운다
-    const pipeDiaMm: (number | null)[] = [];
-    for (let k = 0; k < keptOrigIdx.length - 1; k++) {
-      const a = keptOrigIdx[k], b = keptOrigIdx[k + 1];
-      const v = b === a + 1 ? srcDia[a] : undefined;
-      pipeDiaMm.push(typeof v === 'number' && isFinite(v) ? v : null);
-    }
     routes.push({
       id: `route_${now.getTime()}_${i}`,
       name: String((r && r.name) || `노선 ${i + 1}`),
       manholeIds: ids,
-      updatedAt: stamp,
-      pipeDiaMm: pipeDiaMm.some(v => v !== null) ? pipeDiaMm : undefined
+      updatedAt: stamp
     });
   });
 

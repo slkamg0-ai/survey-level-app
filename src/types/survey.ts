@@ -53,9 +53,6 @@ export interface ManholeBranch {
   dia?: string;         // 관경(mm, 선택)
 }
 
-export type ManholeSystem = '우수' | '오수' | '전기' | '가스' | '상수도';
-export const MANHOLE_SYSTEMS: ManholeSystem[] = ['우수', '오수', '전기', '가스', '상수도'];
-
 export interface ManholeMasterItem {
   id: string;
   name: string;      // 맨홀 명칭 (예: MH01, MH02)
@@ -86,16 +83,6 @@ export interface ManholeMasterItem {
   branches?: ManholeBranch[];
   /** 분기정보 칸에서 파싱하지 못하고 건너뛴 조각(관저고 누락 등) — 있으면 화면에 오류로 알린다 */
   branchIssues?: string[];
-  /**
-   * 시설 종류 (우수/오수/전기/가스/상수도). 맨홀DB가 현장 단위 전역 저장소라 시설이 다른
-   * 맨홀이 한 목록에 같이 쌓인다 — 이 태그로 구분해 목록/지도/3D에서 필터링한다.
-   * 과거 데이터(이 필드가 생기기 전에 등록된 항목)는 비어 있을 수 있다.
-   */
-  system?: ManholeSystem;
-  /** 계획고(GL). 종단면도 기준값 — 3D 뷰 등에서 맨홀 높이(관저고~계획고) 표현에 쓴다 */
-  gl?: string;
-  /** 맨홀 유형 라벨 (예: 원형1호, 특2호, BOX맨홀, 집수정) — 3D 뷰에서 실제 치수 판정에 쓴다 */
-  typeLabel?: string;
 }
 
 const BRANCH_SEP = ';';
@@ -189,12 +176,6 @@ export interface SurveyRoute {
   name: string;
   manholeIds: string[];
   updatedAt: string;
-  /**
-   * 구간별 관경(mm) — manholeIds[i]~manholeIds[i+1] 구간에 pipeDiaMm[i].
-   * 도면분석 쪽 routes.json(diametersMm)에서 가져올 때만 채워진다. 없으면(undefined)
-   * 또는 특정 구간 값이 null 이면 그 구간은 관경을 모른다는 뜻 — 추정해서 채우지 않는다.
-   */
-  pipeDiaMm?: (number | null)[];
 }
 
 /** 노선에서 파생된 한 구간 */
@@ -208,8 +189,6 @@ export interface RouteSpan {
   sheetLength: number | null;
   /** 실제로 쓸 연장 — 좌표값 우선, 없으면 도면값 */
   length: number | null;
-  /** 이 구간의 관경(mm) — 모르면 null (도면분석 노선 가져오기로만 채워짐) */
-  diaMm: number | null;
 }
 
 export interface TrenchSurveyData {

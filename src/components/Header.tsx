@@ -13,7 +13,6 @@ interface HeaderProps {
   onOpenRoutes?: () => void;
   onOpenNearby?: () => void;
   onOpenMap?: () => void;
-  onOpen3D?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -26,8 +25,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenMhDb,
   onOpenRoutes,
   onOpenNearby,
-  onOpenMap,
-  onOpen3D
+  onOpenMap
 }) => {
   return (
     <>
@@ -54,13 +52,6 @@ export const Header: React.FC<HeaderProps> = ({
                 >
                   <span className="topbtn-ico">🗺️</span>
                   <span className="topbtn-label" style={{ color: 'var(--primary)', fontWeight: 700 }}>도면</span>
-                </button>
-              )}
-
-              {onOpen3D && (
-                <button type="button" className="topbtn" onClick={onOpen3D} title="3D 뷰어 (맨홀·노선)">
-                  <span className="topbtn-ico">🧊</span>
-                  <span className="topbtn-label">3D</span>
                 </button>
               )}
 
