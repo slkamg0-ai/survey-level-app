@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { Header } from './components/Header';
 import { Tabs } from './components/Tabs';
 import { TrenchSurveyTab } from './components/TrenchSurveyTab';
@@ -8,7 +8,11 @@ import { ManholeDbModal, getSavedManholes } from './components/ManholeDbModal';
 import { RouteModal } from './components/RouteModal';
 import { NearbyModal } from './components/NearbyModal';
 import { SiteMapModal } from './components/SiteMapModal';
-import { ThreeDViewModal } from './components/ThreeDViewModal';
+// three.js(+OrbitControls)는 꽤 무거워 메인 번들에 늘 끼워 보내지 않는다 — 3D 버튼을
+// 처음 누를 때만 그 청크를 받아오도록 지연 로딩한다 (아래 isThreeDOpen 조건부 마운트와 짝).
+const ThreeDViewModal = React.lazy(() =>
+  import('./components/ThreeDViewModal').then(m => ({ default: m.ThreeDViewModal }))
+);
 import { loadRoutes, buildSpans, applyManholePick, describeLengthGap, reconcileRouteContext } from './utils/routes';
 import { TrenchSurveyData, StandardSurveyData, ManholeMasterItem } from './types/survey';
 import './styles/index.css';
@@ -232,13 +236,22 @@ export function App() {
         initialEndMhName={readJson('survey_trench_data_v2').endMhName}
       />
 
-      {/* 3D 뷰어 모달 — 맨홀DB·노선을 실제 치수로 */}
-      <ThreeDViewModal
-        isOpen={isThreeDOpen}
-        onClose={() => setIsThreeDOpen(false)}
-        manholes={getSavedManholes()}
-        routes={loadRoutes()}
-      />
+      {/* 3D 뷰어 모달 — 맨홀DB·노선을 실제 치수로. 한 번도 안 열었으면 마운트 자체를 안 해서
+          three.js 청크를 아예 안 받는다 */}
+      {isThreeDOpen && (
+        <Suspense fallback={
+          <div style={{ position: 'fixed', inset: 0, zIndex: 105, background: '#0b0f1a', color: '#cdd6f4', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>
+            3D 뷰어 불러오는 중…
+          </div>
+        }>
+          <ThreeDViewModal
+            isOpen={isThreeDOpen}
+            onClose={() => setIsThreeDOpen(false)}
+            manholes={getSavedManholes()}
+            routes={loadRoutes()}
+          />
+        </Suspense>
+      )}
 
       {/* Floating Toast Notification */}
       <div className={`toast ${toastMsg ? 'show' : ''}`} role="status" aria-live="polite">
