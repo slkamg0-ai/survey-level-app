@@ -224,6 +224,12 @@ export const ThreeDViewModal: React.FC<Props> = ({ isOpen, onClose, manholes, ro
     const ox = (Math.min(...xs) + Math.max(...xs)) / 2;
     const oy = (Math.min(...ys) + Math.max(...ys)) / 2;
 
+    // 노선을 하나 골랐으면 카메라는 그 노선 범위로만 맞춘다 — 맨홀은 여전히 전체(시설 필터만 적용)를
+    // 그리되, 줌/시점은 선택한 노선 쪽에 집중시켜야 "노선 선택 = 확대"로 느껴진다.
+    const activeRoutes = routeId === '__all__' ? routes : routes.filter(r => r.id === routeId);
+    const focusIds = routeId === '__all__' ? null : new Set(activeRoutes.flatMap(r => r.manholeIds));
+    const focusBox = new THREE.Box3();
+
     for (const m of shown) {
       const x = num(m.x), y = num(m.y);
       if (x === null || y === null) continue;
@@ -245,6 +251,7 @@ export const ThreeDViewModal: React.FC<Props> = ({ isOpen, onClose, manholes, ro
       mesh.userData = { kind: 'node', d: { name: m.name, z: bottom, gl: num(m.gl), typeLabel: m.typeLabel || '', remarks: m.remarks || '' } };
       group.add(mesh);
       s.pickables.push(mesh);
+      if (focusIds === null || focusIds.has(m.id)) focusBox.expandByPoint(mesh.position);
       if (showLabels) {
         const label = makeLabel(m.name);
         label.position.set(x - ox, top * vexag + 1.6, -(y - oy));
@@ -253,7 +260,6 @@ export const ThreeDViewModal: React.FC<Props> = ({ isOpen, onClose, manholes, ro
       }
     }
 
-    const activeRoutes = routeId === '__all__' ? routes : routes.filter(r => r.id === routeId);
     for (const route of activeRoutes) {
       for (const sp of buildSpans(route, manholes)) {
         if (!passSystem(sp.start) && !passSystem(sp.end)) continue;
@@ -269,12 +275,17 @@ export const ThreeDViewModal: React.FC<Props> = ({ isOpen, onClose, manholes, ro
         mesh.userData = { kind: 'edge', d: { startName: sp.start.name, endName: sp.end.name, system: sys, length: sp.length, diaMm: sp.diaMm } };
         group.add(mesh);
         s.pickables.push(mesh);
+        // 구간(edge)은 이미 선택한 노선으로만 걸러져 있으니 그대로 포커스 범위에 넣는다
+        focusBox.expandByPoint(a);
+        focusBox.expandByPoint(b);
       }
     }
 
     scene.add(group);
     group.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(group);
+    // 노선을 하나 골랐는데 그 노선에 좌표 있는 맨홀/구간이 하나도 없으면(포커스 범위가 비면)
+    // 전체 범위로라도 보여준다 — 화면이 안 움직이는 것보다는 낫다.
+    const box = !focusBox.isEmpty() ? focusBox : new THREE.Box3().setFromObject(group);
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
     const dist = Math.max(size.x, size.z, 20) * 1.3;
