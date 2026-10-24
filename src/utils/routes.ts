@@ -272,3 +272,92 @@ export function lengthDiscrepancy(span: RouteSpan): number | null {
   if (span.coordLength === null || span.sheetLength === null) return null;
   return span.coordLength - span.sheetLength;
 }
+
+/**
+ * 두 선분 사이 평면상 최단거리(m) — 끝점을 [0,1]로 자른 투영을 쓰는 표준 알고리즘.
+ * 두 선분이 교차하면 0에 가깝다.
+ */
+function segmentDistance(
+  a1x: number, a1y: number, a2x: number, a2y: number,
+  b1x: number, b1y: number, b2x: number, b2y: number
+): number {
+  const d1x = a2x - a1x, d1y = a2y - a1y;
+  const d2x = b2x - b1x, d2y = b2y - b1y;
+  const rx = a1x - b1x, ry = a1y - b1y;
+  const a = d1x * d1x + d1y * d1y;
+  const e = d2x * d2x + d2y * d2y;
+  const f = d2x * rx + d2y * ry;
+  const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+  const EPS = 1e-9;
+  let s: number, t: number;
+  if (a <= EPS && e <= EPS) {
+    s = 0; t = 0;
+  } else if (a <= EPS) {
+    s = 0; t = clamp01(f / e);
+  } else {
+    const c = d1x * rx + d1y * ry;
+    if (e <= EPS) {
+      t = 0; s = clamp01(-c / a);
+    } else {
+      const b = d1x * d2x + d1y * d2y;
+      const denom = a * e - b * b;
+      s = denom !== 0 ? clamp01((b * f - c * e) / denom) : 0;
+      t = (b * s + f) / e;
+      if (t < 0) { t = 0; s = clamp01(-c / a); }
+      else if (t > 1) { t = 1; s = clamp01((b - c) / a); }
+    }
+  }
+  const px = a1x + d1x * s, py = a1y + d1y * s;
+  const qx = b1x + d2x * t, qy = b1y + d2y * t;
+  return Math.hypot(px - qx, py - qy);
+}
+
+export interface RelatedRoute {
+  route: SurveyRoute;
+  distanceM: number;
+}
+
+/**
+ * 고른 노선(들) 주변에 겹치거나 가까이 지나는 다른 노선을 찾는다.
+ *
+ * 다른 공종(우수/오수 등) 관로가 같은 구간에 겹쳐 묻히거나 너무 가까이 지나면 시공 중
+ * 간섭이 생긴다 — 특정 노선을 볼 때 그 주변 다른 공종 노선을 같이 띄워서 바로 검토할 수
+ * 있어야 한다는 요구로 추가. 평면(X/Y) 최단거리 기준이며, 좌표 없는 구간은 건너뛴다.
+ */
+export function findRelatedRoutes(
+  selectedRoutes: SurveyRoute[],
+  allRoutes: SurveyRoute[],
+  manholes: ManholeMasterItem[],
+  thresholdM: number
+): RelatedRoute[] {
+  const selectedIds = new Set(selectedRoutes.map(r => r.id));
+  const selSegs: { x1: number; y1: number; x2: number; y2: number }[] = [];
+  for (const r of selectedRoutes) {
+    for (const sp of buildSpans(r, manholes)) {
+      const x1 = parseNum(sp.start.x), y1 = parseNum(sp.start.y);
+      const x2 = parseNum(sp.end.x), y2 = parseNum(sp.end.y);
+      if (x1 === null || y1 === null || x2 === null || y2 === null) continue;
+      selSegs.push({ x1, y1, x2, y2 });
+    }
+  }
+  if (!selSegs.length) return [];
+
+  const out: RelatedRoute[] = [];
+  for (const r of allRoutes) {
+    if (selectedIds.has(r.id)) continue;
+    let minD = Infinity;
+    outer: for (const sp of buildSpans(r, manholes)) {
+      const x1 = parseNum(sp.start.x), y1 = parseNum(sp.start.y);
+      const x2 = parseNum(sp.end.x), y2 = parseNum(sp.end.y);
+      if (x1 === null || y1 === null || x2 === null || y2 === null) continue;
+      for (const s of selSegs) {
+        const d = segmentDistance(x1, y1, x2, y2, s.x1, s.y1, s.x2, s.y2);
+        if (d < minD) minD = d;
+        if (minD <= 0.01) break outer;
+      }
+    }
+    if (minD <= thresholdM) out.push({ route: r, distanceM: minD });
+  }
+  out.sort((a, b) => a.distanceM - b.distanceM);
+  return out;
+}

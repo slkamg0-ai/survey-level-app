@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { X, Box as BoxIcon } from 'lucide-react';
 import { ManholeMasterItem, ManholeSystem, MANHOLE_SYSTEMS, SurveyRoute, manholeInvertIn, manholeInvertOut } from '../types/survey';
-import { buildSpans } from '../utils/routes';
+import { buildSpans, findRelatedRoutes, RelatedRoute } from '../utils/routes';
 
 interface Props {
   isOpen: boolean;
@@ -34,6 +34,8 @@ const SYSTEM_COLOR: Record<ManholeSystem, number> = {
   우수: 0x5fa9e6, 오수: 0xc77dff, 전기: 0xffd166, 가스: 0xff9a3c, 상수도: 0x6ee7b7
 };
 const WARN_COLOR = 0xff6b6b;
+const RELATED_COLOR = 0xffe066; // 선택한 노선 주변(겹침/근접) 다른 노선 추천 강조색 (three.js 16진수)
+const RELATED_COLOR_CSS = '#ffe066'; // 위와 같은 색의 CSS 문자열 — 패널 UI에서 사용
 
 function num(v?: string | null): number | null {
   if (v === undefined || v === null || v === '') return null;
@@ -61,6 +63,8 @@ export const ThreeDViewModal: React.FC<Props> = ({ isOpen, onClose, manholes, ro
   const [selectedRouteIds, setSelectedRouteIds] = useState<string[]>([]);
   const [routePanelOpen, setRoutePanelOpen] = useState(false);
   const [routeSearch, setRouteSearch] = useState('');
+  // 선택한 노선 주변에서 "관련 노선"(겹치거나 가까운 다른 공종 노선)으로 칠 거리(m)
+  const [relatedThresholdM, setRelatedThresholdM] = useState(10);
   const [vexag, setVexag] = useState(8);
   const [showLabels, setShowLabels] = useState(true);
   const [panel, setPanel] = useState<string | null>(null);
@@ -128,7 +132,12 @@ export const ThreeDViewModal: React.FC<Props> = ({ isOpen, onClose, manholes, ro
       } else {
         const d = ud.d;
         setPanel(`${d.startName} → ${d.endName} (${d.system || '시설미지정'}) · L${d.length !== null ? d.length.toFixed(1) : '-'}m` +
-          (d.diaMm ? ` · D${d.diaMm}` : ' · 관경미상'));
+          (d.diaMm ? ` · D${d.diaMm}` : ' · 관경미상') +
+          (ud.related ? ` · 추천 노선 '${ud.routeName}' 선택에 추가됨` : ''));
+        // 강조 표시된 추천 노선을 탭하면 바로 선택에 넣어 그 자리에서 비교·검토할 수 있게 한다
+        if (ud.related && ud.routeId) {
+          setSelectedRouteIds(prev => prev.includes(ud.routeId) ? prev : [...prev, ud.routeId]);
+        }
       }
     };
     renderer.domElement.addEventListener('pointerdown', onDown);
@@ -167,7 +176,7 @@ export const ThreeDViewModal: React.FC<Props> = ({ isOpen, onClose, manholes, ro
     if (!isOpen || !s.scene || !s.group || !s.camera || !s.controls) return;
     rebuild();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, manholes, routes, systemFilter, selectedRouteIds, vexag, showLabels]);
+  }, [isOpen, manholes, routes, systemFilter, selectedRouteIds, relatedThresholdM, vexag, showLabels]);
 
   function makeLabel(text: string): THREE.Sprite {
     const fontPx = 40;
@@ -263,7 +272,7 @@ export const ThreeDViewModal: React.FC<Props> = ({ isOpen, onClose, manholes, ro
       }
     }
 
-    for (const route of activeRoutes) {
+    const drawRouteEdges = (route: SurveyRoute, highlight: boolean) => {
       for (const sp of buildSpans(route, manholes)) {
         if (!passSystem(sp.start) && !passSystem(sp.end)) continue;
         const x1 = num(sp.start.x), y1 = num(sp.start.y), x2 = num(sp.end.x), y2 = num(sp.end.y);
@@ -272,17 +281,35 @@ export const ThreeDViewModal: React.FC<Props> = ({ isOpen, onClose, manholes, ro
         const a = new THREE.Vector3(x1 - ox, z1 * vexag, -(y1 - oy));
         const b = new THREE.Vector3(x2 - ox, z2 * vexag, -(y2 - oy));
         const sys = sp.start.system || sp.end.system;
-        const mat = new THREE.MeshStandardMaterial({ color: sys ? SYSTEM_COLOR[sys] : 0x6677aa });
-        const r = sp.diaMm ? sp.diaMm / 1000 / 2 : PIPE_R_M;
+        const mat = highlight
+          ? new THREE.MeshStandardMaterial({ color: RELATED_COLOR, emissive: RELATED_COLOR, emissiveIntensity: 0.35, transparent: true, opacity: 0.8 })
+          : new THREE.MeshStandardMaterial({ color: sys ? SYSTEM_COLOR[sys] : 0x6677aa });
+        const r = (sp.diaMm ? sp.diaMm / 1000 / 2 : PIPE_R_M) * (highlight ? 1.15 : 1);
         const mesh = cylinderBetween(a, b, r, mat);
-        mesh.userData = { kind: 'edge', d: { startName: sp.start.name, endName: sp.end.name, system: sys, length: sp.length, diaMm: sp.diaMm } };
+        mesh.userData = {
+          kind: 'edge',
+          d: { startName: sp.start.name, endName: sp.end.name, system: sys, length: sp.length, diaMm: sp.diaMm },
+          related: highlight, routeId: route.id, routeName: route.name
+        };
         group.add(mesh);
         s.pickables.push(mesh);
-        // 구간(edge)은 이미 선택한 노선으로만 걸러져 있으니 그대로 포커스 범위에 넣는다
-        focusBox.expandByPoint(a);
-        focusBox.expandByPoint(b);
+        // 선택한 노선의 구간만 포커스 범위에 넣는다 — 추천(강조) 노선까지 넣으면 매번 화면이
+        // 넓어져 "선택 = 확대"가 흐려진다. 추천 노선은 보이기만 하고 줌 범위는 안 바꾼다.
+        if (!highlight) {
+          focusBox.expandByPoint(a);
+          focusBox.expandByPoint(b);
+        }
       }
-    }
+    };
+
+    for (const route of activeRoutes) drawRouteEdges(route, false);
+
+    // 선택한 노선 주변에 겹치거나 가까운 다른 공종 노선을 강조색으로 같이 보여준다 —
+    // 탭하면 바로 선택에 추가된다(위 picking 핸들러의 ud.related 처리).
+    const related: RelatedRoute[] = selectedRouteIds.length > 0
+      ? findRelatedRoutes(activeRoutes, routes, manholes, relatedThresholdM)
+      : [];
+    for (const rr of related) drawRouteEdges(rr.route, true);
 
     scene.add(group);
     group.updateMatrixWorld(true);
@@ -304,6 +331,12 @@ export const ThreeDViewModal: React.FC<Props> = ({ isOpen, onClose, manholes, ro
     acc[k] = (acc[k] || 0) + 1;
     return acc;
   }, {});
+
+  // 패널에 보여줄 "관련 노선 추천" — 고른 노선과 겹치거나 가까운 다른 노선을 거리순으로.
+  const activeRouteObjs = selectedRouteIds.length === 0 ? [] : routes.filter(r => selectedRouteIds.includes(r.id));
+  const relatedSuggestions: RelatedRoute[] = activeRouteObjs.length > 0
+    ? findRelatedRoutes(activeRouteObjs, routes, manholes, relatedThresholdM)
+    : [];
 
   return (
     <div style={{ position: 'fixed', inset: 0, width: '100vw', height: '100dvh', zIndex: 105, display: 'flex', flexDirection: 'column', background: '#0b0f1a' }}>
@@ -330,10 +363,52 @@ export const ThreeDViewModal: React.FC<Props> = ({ isOpen, onClose, manholes, ro
             </button>
             {routePanelOpen && (
               <div style={{
-                position: 'absolute', top: '32px', left: 0, zIndex: 20, width: '260px', maxHeight: '340px',
+                position: 'absolute', top: '32px', left: 0, zIndex: 20, width: '280px', maxHeight: '420px',
                 display: 'flex', flexDirection: 'column', background: 'var(--surface)', border: '1px solid var(--line)',
                 borderRadius: '10px', boxShadow: '0 4px 16px rgba(0,0,0,.4)', overflow: 'hidden'
               }}>
+                {activeRouteObjs.length > 0 && (
+                  <div style={{ padding: '8px', borderBottom: '1px solid var(--line-2)', background: 'var(--surface-2)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                      <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--ink-2)' }}>🔶 근처 다른 노선 추천</span>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10.5px', color: 'var(--ink-3)' }}>
+                        반경
+                        <input
+                          type="number"
+                          min={1}
+                          max={50}
+                          value={relatedThresholdM}
+                          onChange={e => setRelatedThresholdM(Math.max(1, Math.min(50, Number(e.target.value) || 1)))}
+                          style={{ width: '40px', height: '22px', fontSize: '10.5px', padding: '0 4px' }}
+                        />
+                        m
+                      </label>
+                    </div>
+                    {relatedSuggestions.length === 0 ? (
+                      <div style={{ fontSize: '11px', color: 'var(--ink-3)' }}>반경 {relatedThresholdM}m 안에 겹치거나 가까운 다른 노선이 없습니다.</div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '140px', overflowY: 'auto' }}>
+                        {relatedSuggestions.map(rr => (
+                          <button
+                            key={rr.route.id}
+                            type="button"
+                            onClick={() => setSelectedRouteIds(prev => prev.includes(rr.route.id) ? prev : [...prev, rr.route.id])}
+                            style={{
+                              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px',
+                              fontSize: '11px', padding: '4px 8px', borderRadius: '6px', textAlign: 'left',
+                              border: `1px solid ${RELATED_COLOR_CSS}`, background: `${RELATED_COLOR_CSS}22`, cursor: 'pointer'
+                            }}
+                          >
+                            <span>{rr.route.name}</span>
+                            <span style={{ fontSize: '10px', color: 'var(--ink-2)', whiteSpace: 'nowrap' }}>
+                              {rr.distanceM <= 0.1 ? '교차' : `${rr.distanceM.toFixed(1)}m`} · +추가
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div style={{ padding: '8px', borderBottom: '1px solid var(--line-2)', display: 'flex', gap: '6px' }}>
                   <input
                     type="text"
