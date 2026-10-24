@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Plus, Trash2, ArrowUp, ArrowDown, Route as RouteIcon, Play, Upload } from 'lucide-react';
-import { ManholeMasterItem, SurveyRoute } from '../types/survey';
+import { ManholeMasterItem, ManholeSystem, MANHOLE_SYSTEMS, SurveyRoute } from '../types/survey';
 import { loadRoutes, saveRoutes, buildSpans, lengthDiscrepancy, parseRouteImport } from '../utils/routes';
 import { getSavedManholes } from './ManholeDbModal';
 
@@ -26,6 +26,9 @@ export const RouteModal: React.FC<Props> = ({ isOpen, onClose, onToast, onStartS
   const [editingId, setEditingId] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
   const [pickerTerm, setPickerTerm] = useState('');
+  // 노선 파일의 맨홀명이 다른 시설과 겹칠 때(예: 우수/오수 둘 다 "M1-128") 어느 쪽으로
+  // 연결할지 — 비워두면(자동) 기존처럼 먼저 찾은 쪽으로 연결된다.
+  const [importSystem, setImportSystem] = useState<ManholeSystem | ''>('');
 
   if (!isOpen) return null;
 
@@ -46,7 +49,7 @@ export const RouteModal: React.FC<Props> = ({ isOpen, onClose, onToast, onStartS
     const reader = new FileReader();
     reader.onload = e => {
       const content = e.target?.result as string;
-      const res = content ? parseRouteImport(content, manholes) : null;
+      const res = content ? parseRouteImport(content, manholes, importSystem || undefined) : null;
       if (!res) {
         onToast('노선 파일 형식이 아닙니다 (routes 목록이 있는 JSON)');
         return;
@@ -142,6 +145,18 @@ export const RouteModal: React.FC<Props> = ({ isOpen, onClose, onToast, onStartS
               </div>
 
               {/* 종단면도에서 뽑은 노선 순서를 그대로 받는다 */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '11px', color: 'var(--ink-2)', fontWeight: 600 }}>맨홀명 겹치면 우선 시설</span>
+                <select
+                  value={importSystem}
+                  onChange={e => setImportSystem(e.target.value as ManholeSystem | '')}
+                  style={{ height: '28px', fontSize: '11.5px', borderRadius: '6px', border: '1px solid var(--line)' }}
+                  title="이 노선 파일의 맨홀명이 다른 시설에도 같은 이름으로 있으면 여기서 고른 시설 쪽에 연결합니다. 비워두면 먼저 찾은 쪽으로 연결됩니다."
+                >
+                  <option value="">자동</option>
+                  {MANHOLE_SYSTEMS.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
               <label className="btn route-import">
                 <Upload size={15} /> 노선 파일 불러오기 (.json)
                 <input

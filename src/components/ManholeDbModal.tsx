@@ -206,6 +206,30 @@ export function saveManholeList(list: ManholeMasterItem[]) {
   }
 }
 
+/**
+ * 새로 들어온 맨홀을 기존 목록과 합친다.
+ *
+ * CAD 명명 규칙이 시설마다 독립적이라 같은 이름이 다른 시설에도 실제로 존재한다
+ * (예: 우수 M1-128과 오수 M1-128). 이름만으로 중복 판정하면 나중에 들어온 시설이
+ * 먼저 있던 다른 시설의 맨홀을 조용히 지워버린다 — 이름+시설을 함께 키로 써서
+ * 같은 시설·같은 이름만 덮어쓰고, 시설이 다르면 둘 다 남긴다.
+ */
+export function mergeManholes(
+  newItems: ManholeMasterItem[],
+  existing: ManholeMasterItem[]
+): { merged: ManholeMasterItem[]; crossSystemKept: number } {
+  const key = (i: ManholeMasterItem) => `${i.name.toUpperCase()}::${i.system || ''}`;
+  const newKeys = new Set(newItems.map(key));
+  const newNames = new Set(newItems.map(i => i.name.toUpperCase()));
+  let crossSystemKept = 0;
+  const kept = existing.filter(i => {
+    if (newKeys.has(key(i))) return false; // 같은 이름·같은 시설 → 새 값으로 교체
+    if (newNames.has(i.name.toUpperCase())) crossSystemKept++; // 같은 이름·다른 시설 → 둘 다 유지
+    return true;
+  });
+  return { merged: [...newItems, ...kept], crossSystemKept };
+}
+
 export const ManholeDbModal: React.FC<Props> = ({
   isOpen,
   onClose,
@@ -262,7 +286,7 @@ export const ManholeDbModal: React.FC<Props> = ({
       system: importSystem
     };
 
-    const updated = [newItem, ...items.filter(i => i.name.toUpperCase() !== newItem.name)];
+    const { merged: updated } = mergeManholes([newItem], items);
     setItems(updated);
     saveManholeList(updated);
     setMhName('');
@@ -289,15 +313,17 @@ export const ManholeDbModal: React.FC<Props> = ({
       return;
     }
 
-    // 이름 중복 제거 후 합치기
-    const existingNames = new Set(newItems.map(i => i.name));
-    const merged = [...newItems, ...items.filter(i => !existingNames.has(i.name))];
+    // 같은 시설·같은 이름만 덮어쓰고, 다른 시설의 같은 이름은 둘 다 남긴다
+    const { merged, crossSystemKept } = mergeManholes(newItems, items);
 
     setItems(merged);
     saveManholeList(merged);
     setBatchText('');
     setShowBatchInput(false);
-    onToast(`🎉 ${newItems.length}개 CAD 맨홀 관저고 일괄 등록 완료!`);
+    onToast(
+      `🎉 ${newItems.length}개 CAD 맨홀 관저고 일괄 등록 완료!` +
+      (crossSystemKept > 0 ? ` · 다른 시설과 이름 겹침 ${crossSystemKept}건은 둘 다 유지` : '')
+    );
   };
 
   /**
@@ -335,12 +361,14 @@ export const ManholeDbModal: React.FC<Props> = ({
         return;
       }
 
-      const existingNames = new Set(newItems.map(i => i.name));
-      const merged = [...newItems, ...items.filter(i => !existingNames.has(i.name))];
+      const { merged, crossSystemKept } = mergeManholes(newItems, items);
 
       setItems(merged);
       saveManholeList(merged);
-      onToast(`📁 '${file.name}' 파일에서 ${newItems.length}개 맨홀 DB 등록 완료!`);
+      onToast(
+        `📁 '${file.name}' 파일에서 ${newItems.length}개 맨홀 DB 등록 완료!` +
+        (crossSystemKept > 0 ? ` · 다른 시설과 이름 겹침 ${crossSystemKept}건은 둘 다 유지` : '')
+      );
     };
     reader.readAsArrayBuffer(file);
   };

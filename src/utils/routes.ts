@@ -1,4 +1,4 @@
-import { ManholeMasterItem, SurveyRoute, RouteSpan, manholeInvertIn, manholeInvertOut } from '../types/survey';
+import { ManholeMasterItem, ManholeSystem, SurveyRoute, RouteSpan, manholeInvertIn, manholeInvertOut } from '../types/survey';
 import { parseNum } from './storage';
 
 /**
@@ -83,14 +83,27 @@ export function buildSpans(route: SurveyRoute | null, manholes: ManholeMasterIte
   return spans;
 }
 
-/** 이름으로 맨홀 찾기 (대소문자·앞뒤공백 무시) */
+/**
+ * 이름으로 맨홀 찾기 (대소문자·앞뒤공백 무시).
+ *
+ * CAD 쪽 명명 규칙이 시설마다 독립적이라 같은 이름이 다른 시설에도 실제로 존재할 수 있다
+ * (예: 우수 M1-128과 오수 M1-128은 서로 다른 맨홀). preferSystem을 주면 그 시설과 일치하는
+ * 쪽을 우선 반환하고, 없으면 기존처럼 먼저 찾은 것을 반환한다.
+ */
 export function findManholeByName(
   list: ManholeMasterItem[],
-  name?: string
+  name?: string,
+  preferSystem?: ManholeSystem
 ): ManholeMasterItem | null {
   if (!name || !name.trim()) return null;
   const n = name.trim().toUpperCase();
-  return list.find(m => (m.name || '').trim().toUpperCase() === n) || null;
+  const matches = list.filter(m => (m.name || '').trim().toUpperCase() === n);
+  if (matches.length === 0) return null;
+  if (preferSystem) {
+    const scoped = matches.find(m => m.system === preferSystem);
+    if (scoped) return scoped;
+  }
+  return matches[0];
 }
 
 /** 두 맨홀의 좌표 거리. 한쪽이라도 좌표가 없으면 null */
@@ -151,7 +164,8 @@ export interface RouteImportResult {
  */
 export function parseRouteImport(
   text: string,
-  manholes: ManholeMasterItem[]
+  manholes: ManholeMasterItem[],
+  importSystem?: ManholeSystem
 ): RouteImportResult | null {
   let parsed: any;
   try {
@@ -175,7 +189,7 @@ export function parseRouteImport(
     const ids: string[] = [];
     const keptOrigIdx: number[] = []; // 살아남은 맨홀의 원래(가져오기 파일 기준) 순번
     names.forEach((n, origIdx) => {
-      const item = findManholeByName(manholes, n);
+      const item = findManholeByName(manholes, n, importSystem);
       if (item) { ids.push(item.id); keptOrigIdx.push(origIdx); }
       else missing.add(n.trim().toUpperCase());
     });
