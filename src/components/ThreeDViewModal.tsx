@@ -61,6 +61,7 @@ export const ThreeDViewModal: React.FC<Props> = ({ isOpen, onClose, manholes, ro
   const [vexag, setVexag] = useState(8);
   const [showLabels, setShowLabels] = useState(true);
   const [panel, setPanel] = useState<string | null>(null);
+  const [emptyMsg, setEmptyMsg] = useState<string | null>(null);
 
   const s = useRef<{
     renderer?: THREE.WebGLRenderer; scene?: THREE.Scene; camera?: THREE.PerspectiveCamera;
@@ -209,7 +210,16 @@ export const ThreeDViewModal: React.FC<Props> = ({ isOpen, onClose, manholes, ro
     const withCoord = manholes.filter(m => num(m.x) !== null && num(m.y) !== null);
     const shown = withCoord.filter(passSystem);
     const base = shown.length ? shown : withCoord;
-    if (!base.length) { scene.add(group); return; }
+    if (!base.length) {
+      scene.add(group);
+      setEmptyMsg(
+        withCoord.length === 0
+          ? `맨홀 ${manholes.length}개 중 X/Y 좌표가 있는 게 없습니다 — 좌표 없이 등록된 맨홀은 3D에 표시할 수 없습니다. 도면분석 CSV 가져오기(X/Y 열 포함)로 넣어주세요.`
+          : `"${systemFilter}" 시설엔 좌표 있는 맨홀이 없습니다 (전체 좌표 있는 맨홀 ${withCoord.length}개) — 필터를 바꿔보세요.`
+      );
+      return;
+    }
+    setEmptyMsg(null);
     const xs = base.map(m => num(m.x)!), ys = base.map(m => num(m.y)!);
     const ox = (Math.min(...xs) + Math.max(...xs)) / 2;
     const oy = (Math.min(...ys) + Math.max(...ys)) / 2;
@@ -309,6 +319,13 @@ export const ThreeDViewModal: React.FC<Props> = ({ isOpen, onClose, manholes, ro
         </button>
       </div>
       <div ref={mountRef} style={{ flex: 1, position: 'relative', minHeight: 0 }} />
+      {emptyMsg && (
+        <div style={{ position: 'absolute', inset: 0, top: 150, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 24px', pointerEvents: 'none' }}>
+          <div style={{ maxWidth: 360, textAlign: 'center', color: 'var(--ink-3)', fontSize: 13, lineHeight: 1.6 }}>
+            {emptyMsg}
+          </div>
+        </div>
+      )}
       {panel && (
         <div style={{ position: 'absolute', left: 10, bottom: 10, maxWidth: '85%', background: 'rgba(10,14,26,.9)', color: '#cdd6f4', fontSize: 12, padding: '8px 12px', borderRadius: 10, border: '1px solid #334' }}>
           {panel}
