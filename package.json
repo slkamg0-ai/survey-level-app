@@ -1,7 +1,7 @@
 {
   "name": "survey-level-app",
   "private": true,
-  "version": "3.4.1",
+  "version": "3.5.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -20,7 +20,8 @@
     "lucide-react": "^0.378.0",
     "proj4": "^2.21.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "three": "^0.160.0"
   },
   "devDependencies": {
     "@capacitor/cli": "^6.0.0",
@@ -28,6 +29,7 @@
     "@types/proj4": "^2.5.6",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
+    "@types/three": "^0.160.0",
     "@vitejs/plugin-react": "^4.2.1",
     "gh-pages": "^6.3.0",
     "typescript": "^5.2.2",
