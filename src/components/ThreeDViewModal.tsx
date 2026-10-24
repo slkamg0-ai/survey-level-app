@@ -57,7 +57,10 @@ function disposeObject(obj: THREE.Object3D) {
 export const ThreeDViewModal: React.FC<Props> = ({ isOpen, onClose, manholes, routes }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const [systemFilter, setSystemFilter] = useState<ManholeSystem | '전체'>('전체');
-  const [routeId, setRouteId] = useState<string>('__all__');
+  // 빈 배열 = 전체 노선. 여러 노선을 동시에 골라 한 화면에 띄워볼 수 있다(겹치는 구간 비교 등).
+  const [selectedRouteIds, setSelectedRouteIds] = useState<string[]>([]);
+  const [routePanelOpen, setRoutePanelOpen] = useState(false);
+  const [routeSearch, setRouteSearch] = useState('');
   const [vexag, setVexag] = useState(8);
   const [showLabels, setShowLabels] = useState(true);
   const [panel, setPanel] = useState<string | null>(null);
@@ -164,7 +167,7 @@ export const ThreeDViewModal: React.FC<Props> = ({ isOpen, onClose, manholes, ro
     if (!isOpen || !s.scene || !s.group || !s.camera || !s.controls) return;
     rebuild();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, manholes, routes, systemFilter, routeId, vexag, showLabels]);
+  }, [isOpen, manholes, routes, systemFilter, selectedRouteIds, vexag, showLabels]);
 
   function makeLabel(text: string): THREE.Sprite {
     const fontPx = 40;
@@ -224,10 +227,10 @@ export const ThreeDViewModal: React.FC<Props> = ({ isOpen, onClose, manholes, ro
     const ox = (Math.min(...xs) + Math.max(...xs)) / 2;
     const oy = (Math.min(...ys) + Math.max(...ys)) / 2;
 
-    // 노선을 하나 골랐으면 카메라는 그 노선 범위로만 맞춘다 — 맨홀은 여전히 전체(시설 필터만 적용)를
-    // 그리되, 줌/시점은 선택한 노선 쪽에 집중시켜야 "노선 선택 = 확대"로 느껴진다.
-    const activeRoutes = routeId === '__all__' ? routes : routes.filter(r => r.id === routeId);
-    const focusIds = routeId === '__all__' ? null : new Set(activeRoutes.flatMap(r => r.manholeIds));
+    // 노선을 하나 이상 골랐으면 카메라는 그 노선들 범위로만 맞춘다 — 맨홀은 여전히 전체(시설
+    // 필터만 적용)를 그리되, 줌/시점은 고른 노선 쪽에 집중시켜야 "노선 선택 = 확대"로 느껴진다.
+    const activeRoutes = selectedRouteIds.length === 0 ? routes : routes.filter(r => selectedRouteIds.includes(r.id));
+    const focusIds = selectedRouteIds.length === 0 ? null : new Set(activeRoutes.flatMap(r => r.manholeIds));
     const focusBox = new THREE.Box3();
 
     for (const m of shown) {
@@ -312,10 +315,66 @@ export const ThreeDViewModal: React.FC<Props> = ({ isOpen, onClose, manholes, ro
             <option value="전체">전체 {manholes.length}</option>
             {MANHOLE_SYSTEMS.map(sys => <option key={sys} value={sys}>{sys} {systemCounts[sys] || 0}</option>)}
           </select>
-          <select value={routeId} onChange={e => setRouteId(e.target.value)} style={{ height: '28px', fontSize: '11.5px', borderRadius: '6px', border: '1px solid var(--line)' }}>
-            <option value="__all__">전체 노선</option>
-            {routes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-          </select>
+          <div style={{ position: 'relative' }}>
+            <button
+              type="button"
+              onClick={() => setRoutePanelOpen(v => !v)}
+              style={{
+                height: '28px', fontSize: '11.5px', borderRadius: '6px', padding: '0 8px', cursor: 'pointer',
+                border: `1px solid ${selectedRouteIds.length ? 'var(--primary)' : 'var(--line)'}`,
+                background: selectedRouteIds.length ? 'var(--primary-bg)' : 'var(--surface-2)',
+                color: selectedRouteIds.length ? 'var(--primary)' : 'inherit'
+              }}
+            >
+              {selectedRouteIds.length === 0 ? '전체 노선' : `노선 ${selectedRouteIds.length}개 선택됨`}
+            </button>
+            {routePanelOpen && (
+              <div style={{
+                position: 'absolute', top: '32px', left: 0, zIndex: 20, width: '260px', maxHeight: '340px',
+                display: 'flex', flexDirection: 'column', background: 'var(--surface)', border: '1px solid var(--line)',
+                borderRadius: '10px', boxShadow: '0 4px 16px rgba(0,0,0,.4)', overflow: 'hidden'
+              }}>
+                <div style={{ padding: '8px', borderBottom: '1px solid var(--line-2)', display: 'flex', gap: '6px' }}>
+                  <input
+                    type="text"
+                    placeholder="노선 검색..."
+                    value={routeSearch}
+                    onChange={e => setRouteSearch(e.target.value)}
+                    style={{ flex: 1, height: '26px', fontSize: '11.5px' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRouteIds([])}
+                    disabled={selectedRouteIds.length === 0}
+                    style={{ fontSize: '10.5px', padding: '2px 8px', borderRadius: '6px' }}
+                  >
+                    전체보기
+                  </button>
+                </div>
+                <div style={{ overflowY: 'auto', flex: 1 }}>
+                  {routes
+                    .filter(r => !routeSearch.trim() || r.name.toLowerCase().includes(routeSearch.trim().toLowerCase()))
+                    .map(r => (
+                      <label
+                        key={r.id}
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px', fontSize: '12px', cursor: 'pointer', borderBottom: '1px solid var(--line-2)' }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedRouteIds.includes(r.id)}
+                          onChange={() => setSelectedRouteIds(prev => prev.includes(r.id) ? prev.filter(x => x !== r.id) : [...prev, r.id])}
+                        />
+                        {r.name}
+                      </label>
+                    ))}
+                  {routes.length === 0 && <div style={{ padding: '10px', fontSize: '11px', color: 'var(--ink-3)' }}>노선이 없습니다</div>}
+                </div>
+                <div style={{ padding: '6px 8px', borderTop: '1px solid var(--line-2)', textAlign: 'right' }}>
+                  <button type="button" onClick={() => setRoutePanelOpen(false)} style={{ fontSize: '11px', padding: '3px 10px' }}>닫기</button>
+                </div>
+              </div>
+            )}
+          </div>
           <label style={{ display: 'flex', gap: '4px', alignItems: 'center', fontSize: '11px' }}>
             과장
             <input type="range" min={1} max={30} value={vexag} onChange={e => setVexag(Number(e.target.value))} style={{ width: '80px' }} />
