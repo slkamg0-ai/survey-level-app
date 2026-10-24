@@ -55,6 +55,10 @@ export interface ManholeBranch {
 
 export type ManholeSystem = '우수' | '오수' | '전기' | '가스' | '상수도';
 export const MANHOLE_SYSTEMS: ManholeSystem[] = ['우수', '오수', '전기', '가스', '상수도'];
+// 3D 뷰어의 SYSTEM_COLOR(three.js 16진수)와 같은 색 — 맨홀DB 필터 칩에서도 같은 색으로 보이게 CSS 문자열로 공유
+export const MANHOLE_SYSTEM_COLOR: Record<ManholeSystem, string> = {
+  우수: '#5fa9e6', 오수: '#c77dff', 전기: '#ffd166', 가스: '#ff9a3c', 상수도: '#6ee7b7'
+};
 
 export interface ManholeMasterItem {
   id: string;

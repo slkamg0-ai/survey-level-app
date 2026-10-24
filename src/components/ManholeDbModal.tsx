@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ManholeMasterItem, ManholeSystem, MANHOLE_SYSTEMS, matchManholeByNameOrNumber, manholeInvertIn, manholeInvertOut, manholeDropM, decodeBranches, manholeIsJunction, branchParseIssues } from '../types/survey';
+import { ManholeMasterItem, ManholeSystem, MANHOLE_SYSTEMS, MANHOLE_SYSTEM_COLOR, matchManholeByNameOrNumber, manholeInvertIn, manholeInvertOut, manholeDropM, decodeBranches, manholeIsJunction, branchParseIssues } from '../types/survey';
 import { Database, Plus, Trash2, X, FileText, Upload, Search } from 'lucide-react';
 
 interface Props {
@@ -491,7 +491,10 @@ export const ManholeDbModal: React.FC<Props> = ({
               <select
                 value={importSystem}
                 onChange={e => setImportSystem(e.target.value as ManholeSystem)}
-                style={{ height: '28px', fontSize: '11.5px', borderRadius: '6px', border: '1px solid var(--line)' }}
+                style={{
+                  height: '28px', fontSize: '11.5px', borderRadius: '6px',
+                  border: `1.5px solid ${MANHOLE_SYSTEM_COLOR[importSystem]}`, color: MANHOLE_SYSTEM_COLOR[importSystem], fontWeight: 700
+                }}
                 title="열에 '시설' 칸이 있으면 그 값이 우선 적용되고, 없으면 여기서 고른 시설로 전부 등록됩니다"
               >
                 {MANHOLE_SYSTEMS.map(s => <option key={s} value={s}>{s}</option>)}
@@ -595,22 +598,30 @@ export const ManholeDbModal: React.FC<Props> = ({
                 <Search size={12} style={{ position: 'absolute', left: '6px', top: '8px', color: 'var(--ink-3)' }} />
               </div>
             </div>
-            <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', marginBottom: '8px' }}>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '8px' }}>
               {(['전체', ...MANHOLE_SYSTEMS] as const).map(s => {
                 const n = s === '전체' ? items.length : (systemCounts[s] || 0);
                 const active = systemFilter === s;
+                const color = s === '전체' ? undefined : MANHOLE_SYSTEM_COLOR[s];
+                const empty = s !== '전체' && n === 0;
                 return (
                   <button
                     key={s}
                     type="button"
                     onClick={() => setSystemFilter(s)}
+                    disabled={empty}
+                    title={empty ? `${s} 시설로 등록된 맨홀 없음` : `${s}만 보기`}
                     style={{
-                      fontSize: '10.5px', fontWeight: 700, padding: '3px 9px', borderRadius: '999px',
-                      border: `1px solid ${active ? 'var(--primary)' : 'var(--line)'}`,
-                      background: active ? 'var(--primary-bg)' : 'var(--surface-2)',
-                      color: active ? 'var(--primary)' : 'var(--ink-2)', cursor: 'pointer'
+                      display: 'flex', alignItems: 'center', gap: '5px',
+                      fontSize: '11px', fontWeight: 700, padding: '4px 10px', borderRadius: '999px',
+                      border: `1.5px solid ${active ? (color || 'var(--primary)') : 'var(--line)'}`,
+                      background: active ? (color ? `${color}26` : 'var(--primary-bg)') : 'var(--surface-2)',
+                      color: active ? (color || 'var(--primary)') : 'var(--ink-2)',
+                      opacity: empty ? 0.45 : 1,
+                      cursor: empty ? 'default' : 'pointer'
                     }}
                   >
+                    {color && <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: color, flexShrink: 0 }} />}
                     {s} {n}
                   </button>
                 );
@@ -619,7 +630,13 @@ export const ManholeDbModal: React.FC<Props> = ({
 
             {filteredItems.length === 0 ? (
               <div style={{ padding: '24px 10px', textAlign: 'center', color: 'var(--ink-3)', fontSize: '12.5px' }}>
-                검색된 맨홀 데이터가 없습니다. (숫자로 검색: 예: 1, 01)
+                {items.length === 0
+                  ? '등록된 맨홀이 없습니다. 위에서 추가해주세요.'
+                  : systemFilter !== '전체' && searchTerm
+                  ? `'${systemFilter}' 안에서 '${searchTerm}' 검색 결과가 없습니다.`
+                  : systemFilter !== '전체'
+                  ? `'${systemFilter}'로 등록된 맨홀이 없습니다.`
+                  : '검색된 맨홀 데이터가 없습니다. (숫자로 검색: 예: 1, 01)'}
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '350px', overflowY: 'auto' }}>
@@ -701,8 +718,10 @@ export const ManholeDbModal: React.FC<Props> = ({
                       {item.system && (
                         <span
                           style={{
-                            fontSize: '10.5px', fontWeight: 700, padding: '2px 6px', borderRadius: '999px',
-                            border: '1px solid var(--line)', background: 'var(--surface-2)', color: 'var(--ink-2)'
+                            fontSize: '10.5px', fontWeight: 700, padding: '2px 7px', borderRadius: '999px',
+                            border: `1px solid ${MANHOLE_SYSTEM_COLOR[item.system]}`,
+                            background: `${MANHOLE_SYSTEM_COLOR[item.system]}22`,
+                            color: MANHOLE_SYSTEM_COLOR[item.system]
                           }}
                         >
                           {item.system}
