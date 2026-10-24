@@ -189,6 +189,12 @@ export interface SurveyRoute {
   name: string;
   manholeIds: string[];
   updatedAt: string;
+  /**
+   * 구간별 관경(mm) — manholeIds[i]~manholeIds[i+1] 구간에 pipeDiaMm[i].
+   * 도면분석 쪽 routes.json(diametersMm)에서 가져올 때만 채워진다. 없으면(undefined)
+   * 또는 특정 구간 값이 null 이면 그 구간은 관경을 모른다는 뜻 — 추정해서 채우지 않는다.
+   */
+  pipeDiaMm?: (number | null)[];
 }
 
 /** 노선에서 파생된 한 구간 */
@@ -202,6 +208,8 @@ export interface RouteSpan {
   sheetLength: number | null;
   /** 실제로 쓸 연장 — 좌표값 우선, 없으면 도면값 */
   length: number | null;
+  /** 이 구간의 관경(mm) — 모르면 null (도면분석 노선 가져오기로만 채워짐) */
+  diaMm: number | null;
 }
 
 export interface TrenchSurveyData {

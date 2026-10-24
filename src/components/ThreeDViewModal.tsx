@@ -28,7 +28,7 @@ const TYPE_SIZE: Record<string, { circleM?: number; boxM?: number }> = {
 };
 const DEFAULT_BOX_M = 1.2; // 크기 데이터 없는 유형(집수정 등)의 자리표시 — 실측 아님
 const LABEL_MIN_DIST = 25; // 이 거리보다 가까워지면 라벨 화면크기를 고정(계속 확대되며 객체를 가리지 않도록)
-const PIPE_R_M = 0.25;     // 노선 구간은 관경 데이터가 없어 일괄 표시용 반지름(실측 아님)
+const PIPE_R_M = 0.25;     // 구간 관경(diaMm)을 모를 때만 쓰는 자리표시 반지름 — 실측 아님
 
 const SYSTEM_COLOR: Record<ManholeSystem, number> = {
   우수: 0x5fa9e6, 오수: 0xc77dff, 전기: 0xffd166, 가스: 0xff9a3c, 상수도: 0x6ee7b7
@@ -123,7 +123,8 @@ export const ThreeDViewModal: React.FC<Props> = ({ isOpen, onClose, manholes, ro
         );
       } else {
         const d = ud.d;
-        setPanel(`${d.startName} → ${d.endName} (${d.system || '시설미지정'}) · L${d.length !== null ? d.length.toFixed(1) : '-'}m`);
+        setPanel(`${d.startName} → ${d.endName} (${d.system || '시설미지정'}) · L${d.length !== null ? d.length.toFixed(1) : '-'}m` +
+          (d.diaMm ? ` · D${d.diaMm}` : ' · 관경미상'));
       }
     };
     renderer.domElement.addEventListener('pointerdown', onDown);
@@ -253,8 +254,9 @@ export const ThreeDViewModal: React.FC<Props> = ({ isOpen, onClose, manholes, ro
         const b = new THREE.Vector3(x2 - ox, z2 * vexag, -(y2 - oy));
         const sys = sp.start.system || sp.end.system;
         const mat = new THREE.MeshStandardMaterial({ color: sys ? SYSTEM_COLOR[sys] : 0x6677aa });
-        const mesh = cylinderBetween(a, b, PIPE_R_M, mat);
-        mesh.userData = { kind: 'edge', d: { startName: sp.start.name, endName: sp.end.name, system: sys, length: sp.length } };
+        const r = sp.diaMm ? sp.diaMm / 1000 / 2 : PIPE_R_M;
+        const mesh = cylinderBetween(a, b, r, mat);
+        mesh.userData = { kind: 'edge', d: { startName: sp.start.name, endName: sp.end.name, system: sys, length: sp.length, diaMm: sp.diaMm } };
         group.add(mesh);
         s.pickables.push(mesh);
       }
