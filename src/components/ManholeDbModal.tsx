@@ -380,6 +380,19 @@ export const ManholeDbModal: React.FC<Props> = ({
     onToast(`삭제되었습니다: ${name}`);
   };
 
+  /** 지금 고른 시설 필터에 해당하는 맨홀을 전부 지운다 — 되돌릴 수 없어 확인을 받는다 */
+  const handleBulkDelete = () => {
+    const targets = systemFilter === '전체' ? items : items.filter(i => i.system === systemFilter);
+    if (targets.length === 0) return;
+    const label = systemFilter === '전체' ? '전체' : systemFilter;
+    if (!window.confirm(`'${label}' 맨홀 ${targets.length}개를 모두 삭제하시겠습니까?\n되돌릴 수 없습니다.`)) return;
+    const targetIds = new Set(targets.map(i => i.id));
+    const updated = items.filter(i => !targetIds.has(i.id));
+    setItems(updated);
+    saveManholeList(updated);
+    onToast(`🗑 '${label}' 맨홀 ${targets.length}개 삭제 완료`);
+  };
+
   const handleApplyToSurvey = (type: 'start' | 'end', item: ManholeMasterItem) => {
     if (onSelectManhole) {
       // 연장이 함께 정해지므로 안내는 호출한 쪽이 띄운다.
@@ -654,6 +667,21 @@ export const ManholeDbModal: React.FC<Props> = ({
                   </button>
                 );
               })}
+              <button
+                type="button"
+                onClick={handleBulkDelete}
+                disabled={(systemFilter === '전체' ? items.length : (systemCounts[systemFilter] || 0)) === 0}
+                title={`지금 필터('${systemFilter}')에 해당하는 맨홀을 전부 삭제합니다`}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '4px',
+                  fontSize: '11px', fontWeight: 700, padding: '4px 10px', borderRadius: '999px',
+                  border: '1.5px solid var(--cut)', background: 'var(--cut-bg)', color: 'var(--cut)',
+                  opacity: (systemFilter === '전체' ? items.length : (systemCounts[systemFilter] || 0)) === 0 ? 0.45 : 1,
+                  cursor: 'pointer', marginLeft: 'auto'
+                }}
+              >
+                <Trash2 size={12} /> {systemFilter === '전체' ? '전체' : systemFilter} 일괄삭제
+              </button>
             </div>
 
             {filteredItems.length === 0 ? (
