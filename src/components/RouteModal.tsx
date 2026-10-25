@@ -47,9 +47,19 @@ export const RouteModal: React.FC<Props> = ({ isOpen, onClose, onToast, onStartS
 
   const handleImport = (file: File) => {
     const reader = new FileReader();
+    // 클라우드(구글드라이브 등)에서 아직 기기에 안 받아진 파일을 고르면 읽기가 조용히
+    // 멈추거나 실패할 수 있다 — 아무 반응 없이 끝나지 않도록 에러도 토스트로 알린다.
+    reader.onerror = () => {
+      onToast(`⚠️ '${file.name}' 파일을 읽지 못했습니다 — 기기에 완전히 저장됐는지 확인 후 다시 시도해주세요.`);
+    };
     reader.onload = e => {
+      try {
       const content = e.target?.result as string;
-      const res = content ? parseRouteImport(content, manholes, importSystem || undefined) : null;
+      if (!content) {
+        onToast(`⚠️ '${file.name}' 파일이 비어 있습니다 — 클라우드에서 아직 안 받아졌을 수 있습니다. 파일 앱에서 한 번 열어본 뒤 다시 시도해주세요.`);
+        return;
+      }
+      const res = parseRouteImport(content, manholes, importSystem || undefined);
       if (!res) {
         onToast('노선 파일 형식이 아닙니다 (routes 목록이 있는 JSON)');
         return;
@@ -97,6 +107,9 @@ export const RouteModal: React.FC<Props> = ({ isOpen, onClose, onToast, onStartS
       if (res.dropped > 0) notes.push(`맨홀 부족 ${res.dropped}개 제외`);
       if (res.missingNames.length) notes.push(`DB에 없는 맨홀 ${res.missingNames.length}종`);
       onToast(notes.join(' · '));
+      } catch (err) {
+        onToast(`⚠️ '${file.name}' 처리 중 오류가 발생했습니다: ${err instanceof Error ? err.message : String(err)}`);
+      }
     };
     reader.readAsText(file, 'UTF-8');
   };

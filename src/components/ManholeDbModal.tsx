@@ -348,27 +348,42 @@ export const ManholeDbModal: React.FC<Props> = ({
   // CSV/TXT 파일 읽기 핸들러
   const handleFileUpload = (file: File) => {
     const reader = new FileReader();
+    // 클라우드(구글드라이브 등)에서 아직 기기에 안 받아진 파일을 고르면 읽기가 조용히
+    // 멈추거나 실패할 수 있다 — 아무 반응 없이 끝나지 않도록 모든 경로에 토스트를 둔다.
+    reader.onerror = () => {
+      onToast(`⚠️ '${file.name}' 파일을 읽지 못했습니다 — 기기에 완전히 저장됐는지 확인 후 다시 시도해주세요.`);
+    };
     reader.onload = (e) => {
-      const buf = e.target?.result as ArrayBuffer | null;
-      if (!buf) return;
-      const content = decodeCsvBuffer(buf);
-      if (!content) return;
+      try {
+        const buf = e.target?.result as ArrayBuffer | null;
+        if (!buf || buf.byteLength === 0) {
+          onToast(`⚠️ '${file.name}' 파일이 비어 있습니다 — 클라우드에서 아직 안 받아졌을 수 있습니다. 파일 앱에서 한 번 열어본 뒤 다시 시도해주세요.`);
+          return;
+        }
+        const content = decodeCsvBuffer(buf);
+        if (!content) {
+          onToast(`⚠️ '${file.name}' 내용을 읽지 못했습니다 (인코딩 문제로 보입니다).`);
+          return;
+        }
 
-      const newItems = parseManholeBlock(content, importSystem);
+        const newItems = parseManholeBlock(content, importSystem);
 
-      if (newItems.length === 0) {
-        onToast('파일에서 유효한 맨홀 데이터를 찾지 못했습니다 (형식: MH01, -0.430, X, Y, 거리)');
-        return;
+        if (newItems.length === 0) {
+          onToast('파일에서 유효한 맨홀 데이터를 찾지 못했습니다 (형식: MH01, -0.430, X, Y, 거리)');
+          return;
+        }
+
+        const { merged, crossSystemKept } = mergeManholes(newItems, items);
+
+        setItems(merged);
+        saveManholeList(merged);
+        onToast(
+          `📁 '${file.name}' 파일에서 ${newItems.length}개 맨홀 DB 등록 완료!` +
+          (crossSystemKept > 0 ? ` · 다른 시설과 이름 겹침 ${crossSystemKept}건은 둘 다 유지` : '')
+        );
+      } catch (err) {
+        onToast(`⚠️ '${file.name}' 처리 중 오류가 발생했습니다: ${err instanceof Error ? err.message : String(err)}`);
       }
-
-      const { merged, crossSystemKept } = mergeManholes(newItems, items);
-
-      setItems(merged);
-      saveManholeList(merged);
-      onToast(
-        `📁 '${file.name}' 파일에서 ${newItems.length}개 맨홀 DB 등록 완료!` +
-        (crossSystemKept > 0 ? ` · 다른 시설과 이름 겹침 ${crossSystemKept}건은 둘 다 유지` : '')
-      );
     };
     reader.readAsArrayBuffer(file);
   };
