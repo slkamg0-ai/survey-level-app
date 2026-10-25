@@ -361,3 +361,25 @@ export function findRelatedRoutes(
   out.sort((a, b) => a.distanceM - b.distanceM);
   return out;
 }
+
+/**
+ * 노선이 속한 시설 추정.
+ *
+ * SurveyRoute 자체엔 system 필드가 없다 — 노선을 이루는 맨홀들의 system을 다수결로 봐서
+ * 추정한다. 끝맨홀 하나만 보면 그 맨홀에 system이 없을 때 전체가 "미지정"이 되므로,
+ * 구성 맨홀 전체를 센다.
+ */
+export function routeSystem(route: SurveyRoute, manholes: ManholeMasterItem[]): ManholeSystem | undefined {
+  const byId = new Map(manholes.map(m => [m.id, m]));
+  const counts = new Map<ManholeSystem, number>();
+  for (const id of route.manholeIds) {
+    const sys = byId.get(id)?.system;
+    if (sys) counts.set(sys, (counts.get(sys) || 0) + 1);
+  }
+  let best: ManholeSystem | undefined;
+  let bestCount = 0;
+  for (const [sys, count] of counts) {
+    if (count > bestCount) { best = sys; bestCount = count; }
+  }
+  return best;
+}

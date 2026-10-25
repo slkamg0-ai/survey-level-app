@@ -2,8 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { X, Box as BoxIcon } from 'lucide-react';
-import { ManholeMasterItem, ManholeSystem, MANHOLE_SYSTEMS, SurveyRoute, manholeInvertIn, manholeInvertOut } from '../types/survey';
-import { buildSpans, findRelatedRoutes, RelatedRoute } from '../utils/routes';
+import { ManholeMasterItem, ManholeSystem, MANHOLE_SYSTEMS, MANHOLE_SYSTEM_COLOR, SurveyRoute, manholeInvertIn, manholeInvertOut } from '../types/survey';
+import { buildSpans, findRelatedRoutes, RelatedRoute, routeSystem } from '../utils/routes';
 
 interface Props {
   isOpen: boolean;
@@ -63,6 +63,9 @@ export const ThreeDViewModal: React.FC<Props> = ({ isOpen, onClose, manholes, ro
   const [selectedRouteIds, setSelectedRouteIds] = useState<string[]>([]);
   const [routePanelOpen, setRoutePanelOpen] = useState(false);
   const [routeSearch, setRouteSearch] = useState('');
+  // 노선 선택 패널 안에서 노선 목록을 시설로도 좁혀볼 수 있게 — 노선 자체엔 시설 태그가
+  // 없어 routeSystem()으로 구성 맨홀 다수결 추정값을 쓴다.
+  const [routePanelSystemFilter, setRoutePanelSystemFilter] = useState<ManholeSystem | '전체'>('전체');
   // 선택한 노선 주변에서 "관련 노선"(겹치거나 가까운 다른 공종 노선)으로 칠 거리(m)
   const [relatedThresholdM, setRelatedThresholdM] = useState(10);
   const [vexag, setVexag] = useState(8);
@@ -338,6 +341,14 @@ export const ThreeDViewModal: React.FC<Props> = ({ isOpen, onClose, manholes, ro
     ? findRelatedRoutes(activeRouteObjs, routes, manholes, relatedThresholdM)
     : [];
 
+  // 노선 선택 패널의 시설 필터용 — 노선마다 구성 맨홀로 추정한 시설과, 시설별 개수
+  const routeSystems = new Map(routes.map(r => [r.id, routeSystem(r, manholes)]));
+  const routeSystemCounts = routes.reduce<Record<string, number>>((acc, r) => {
+    const sys = routeSystems.get(r.id) || '미지정';
+    acc[sys] = (acc[sys] || 0) + 1;
+    return acc;
+  }, {});
+
   return (
     <div style={{ position: 'fixed', inset: 0, width: '100vw', height: '100dvh', zIndex: 105, display: 'flex', flexDirection: 'column', background: '#0b0f1a' }}>
       <div style={{ background: 'var(--surface)', padding: '8px 12px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px', zIndex: 10 }}>
@@ -409,6 +420,17 @@ export const ThreeDViewModal: React.FC<Props> = ({ isOpen, onClose, manholes, ro
                     )}
                   </div>
                 )}
+                <div style={{ padding: '8px', borderBottom: '1px solid var(--line-2)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ fontSize: '10.5px', color: 'var(--ink-2)', fontWeight: 600 }}>시설</span>
+                  <select
+                    value={routePanelSystemFilter}
+                    onChange={e => setRoutePanelSystemFilter(e.target.value as any)}
+                    style={{ flex: 1, height: '24px', fontSize: '11px', borderRadius: '6px', border: '1px solid var(--line)' }}
+                  >
+                    <option value="전체">전체 {routes.length}</option>
+                    {MANHOLE_SYSTEMS.map(sys => <option key={sys} value={sys}>{sys} {routeSystemCounts[sys] || 0}</option>)}
+                  </select>
+                </div>
                 <div style={{ padding: '8px', borderBottom: '1px solid var(--line-2)', display: 'flex', gap: '6px' }}>
                   <input
                     type="text"
@@ -429,19 +451,24 @@ export const ThreeDViewModal: React.FC<Props> = ({ isOpen, onClose, manholes, ro
                 <div style={{ overflowY: 'auto', flex: 1 }}>
                   {routes
                     .filter(r => !routeSearch.trim() || r.name.toLowerCase().includes(routeSearch.trim().toLowerCase()))
-                    .map(r => (
-                      <label
-                        key={r.id}
-                        style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px', fontSize: '12px', cursor: 'pointer', borderBottom: '1px solid var(--line-2)' }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedRouteIds.includes(r.id)}
-                          onChange={() => setSelectedRouteIds(prev => prev.includes(r.id) ? prev.filter(x => x !== r.id) : [...prev, r.id])}
-                        />
-                        {r.name}
-                      </label>
-                    ))}
+                    .filter(r => routePanelSystemFilter === '전체' || routeSystems.get(r.id) === routePanelSystemFilter)
+                    .map(r => {
+                      const sys = routeSystems.get(r.id);
+                      return (
+                        <label
+                          key={r.id}
+                          style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px', fontSize: '12px', cursor: 'pointer', borderBottom: '1px solid var(--line-2)' }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedRouteIds.includes(r.id)}
+                            onChange={() => setSelectedRouteIds(prev => prev.includes(r.id) ? prev.filter(x => x !== r.id) : [...prev, r.id])}
+                          />
+                          {sys && <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: MANHOLE_SYSTEM_COLOR[sys], flexShrink: 0 }} />}
+                          {r.name}
+                        </label>
+                      );
+                    })}
                   {routes.length === 0 && <div style={{ padding: '10px', fontSize: '11px', color: 'var(--ink-3)' }}>노선이 없습니다</div>}
                 </div>
                 <div style={{ padding: '6px 8px', borderTop: '1px solid var(--line-2)', textAlign: 'right' }}>
