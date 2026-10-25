@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { ManholeMasterItem, matchManholeByNameOrNumber, manholeInvertIn, manholeInvertOut, manholeDropM, decodeBranches, manholeIsJunction, branchParseIssues } from '../types/survey';
+import React, { useEffect, useState } from 'react';
+import { ManholeMasterItem, ManholeSystem, MANHOLE_SYSTEMS, matchManholeByNameOrNumber, manholeInvertIn, manholeInvertOut, manholeDropM, decodeBranches, manholeIsJunction, branchParseIssues } from '../types/survey';
 import { Database, Plus, Trash2, X, FileText, Upload, Search } from 'lucide-react';
 
 interface Props {
@@ -43,7 +43,10 @@ export function getSavedManholes(): ManholeMasterItem[] {
               : undefined,
             branchIssues: Array.isArray(item.branchIssues)
               ? item.branchIssues.map((s: any) => String(s)).filter(Boolean)
-              : undefined
+              : undefined,
+            system: (MANHOLE_SYSTEMS as string[]).includes(item.system) ? item.system : undefined,
+            gl: str(item.gl),
+            typeLabel: str(item.typeLabel)
           }));
       }
       console.error('맨홀 DB가 배열이 아닙니다. 기본값으로 대체합니다.');
@@ -68,6 +71,7 @@ export function getSavedManholes(): ManholeMasterItem[] {
  */
 export interface ColumnMap {
   name: number; invertEl: number; invertElIn: number; x: number; y: number; dist: number; remarks: number; branches: number;
+  system: number; gl: number; typeLabel: number;
 }
 
 const HEADER_PATTERNS: { key: keyof ColumnMap; re: RegExp }[] = [
@@ -76,16 +80,20 @@ const HEADER_PATTERNS: { key: keyof ColumnMap; re: RegExp }[] = [
   { key: 'invertElIn', re: /유입|in.*(invert|el)/i },
   { key: 'name', re: /맨홀|번호|명칭|^name$|^mh$/i },
   { key: 'invertEl', re: /관저|인버트|invert|^el$|바닥고/i },
+  { key: 'gl', re: /계획고|^gl$/i },
   { key: 'x', re: /^x$|x좌표|경도|easting|^e$/i },
   { key: 'y', re: /^y$|y좌표|위도|northing|^n$/i },
   { key: 'dist', re: /거리|연장|간격|length|dist/i },
   { key: 'remarks', re: /비고|remark|note/i },
   // 3방·4방 합류 맨홀의 추가 연결관 목록 — "이름:in|out:관저고:관경;..." 형식 한 칸
-  { key: 'branches', re: /분기|합류|branch/i }
+  { key: 'branches', re: /분기|합류|branch/i },
+  { key: 'system', re: /시설|공종|^system$/i },
+  { key: 'typeLabel', re: /유형|^type$/i }
 ];
 
 export function detectColumns(cells: string[]): ColumnMap | null {
-  const map: ColumnMap = { name: -1, invertEl: -1, invertElIn: -1, x: -1, y: -1, dist: -1, remarks: -1, branches: -1 };
+  const map: ColumnMap = { name: -1, invertEl: -1, invertElIn: -1, x: -1, y: -1, dist: -1, remarks: -1, branches: -1,
+                            system: -1, gl: -1, typeLabel: -1 };
   let hits = 0;
   cells.forEach((cell, i) => {
     const c = cell.trim();
@@ -99,9 +107,11 @@ export function detectColumns(cells: string[]): ColumnMap | null {
 }
 
 export function parseManholeLine(
-  parts: string[], idx: number, cols: ColumnMap | null
+  parts: string[], idx: number, cols: ColumnMap | null, defaultSystem?: ManholeSystem
 ): ManholeMasterItem | null {
   const at = (i: number) => (i >= 0 && i < parts.length ? parts[i].trim() : '');
+  const asSystem = (v: string): ManholeSystem | undefined =>
+    (MANHOLE_SYSTEMS as string[]).includes(v) ? (v as ManholeSystem) : undefined;
 
   if (cols) {
     const name = at(cols.name).toUpperCase();
@@ -124,7 +134,11 @@ export function parseManholeLine(
       branchIssues: (() => {
         const issues = branchParseIssues(at(cols.branches));
         return issues.length ? issues : undefined;
-      })()
+      })(),
+      // 열에 시설 칸이 있으면 그 값을, 없으면(또는 못 알아보는 값이면) 가져오기 때 고른 기본 시설을 쓴다.
+      system: asSystem(at(cols.system)) ?? defaultSystem,
+      gl: at(cols.gl) || undefined,
+      typeLabel: at(cols.typeLabel) || undefined
     };
   }
 
@@ -155,12 +169,13 @@ export function parseManholeLine(
     invertEl: el,
     x, y,
     distToNext: dist,
-    remarks: rest.slice(consumed).join(' ').trim() || undefined
+    remarks: rest.slice(consumed).join(' ').trim() || undefined,
+    system: defaultSystem
   };
 }
 
-/** 붙여넣기 텍스트나 파일 내용 전체를 맨홀 목록으로 파싱한다 */
-export function parseManholeBlock(content: string): ManholeMasterItem[] {
+/** 붙여넣기 텍스트나 파일 내용 전체를 맨홀 목록으로 파싱한다. defaultSystem: 열에 시설 칸이 없을 때 전체에 적용할 시설. */
+export function parseManholeBlock(content: string, defaultSystem?: ManholeSystem): ManholeMasterItem[] {
   const lines = content.split(/\r?\n/).filter(l => l.trim());
   if (lines.length === 0) return [];
 
@@ -177,7 +192,7 @@ export function parseManholeBlock(content: string): ManholeMasterItem[] {
   body.forEach((line, idx) => {
     // 헤더를 못 잡았는데 머리글처럼 보이는 줄은 건너뛴다
     if (!cols && /맨홀|관저고|invert/i.test(line) && !/-?\d/.test(line.replace(/[^\d.-]/g, ''))) return;
-    const item = parseManholeLine(split(line), idx, cols);
+    const item = parseManholeLine(split(line), idx, cols, defaultSystem);
     if (item) out.push(item);
   });
   return out;
@@ -208,6 +223,20 @@ export const ManholeDbModal: React.FC<Props> = ({
   const [batchText, setBatchText] = useState('');
   const [showBatchInput, setShowBatchInput] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [importSystem, setImportSystem] = useState<ManholeSystem>('우수');
+  const [systemFilter, setSystemFilter] = useState<ManholeSystem | '전체'>('전체');
+
+  // 시설 구분(system) 필드가 생기기 전에 등록된 기존 항목은 전부 오수 작업 중 쌓인 데이터였다
+  // (2026-10-24 사용자 확인) — 한 번만 오수로 표시해 새로 들어올 우수 데이터와 섞이지 않게 한다.
+  useEffect(() => {
+    setItems(prev => {
+      if (!prev.some(i => !i.system)) return prev;
+      const migrated = prev.map(i => (i.system ? i : { ...i, system: '오수' as ManholeSystem }));
+      saveManholeList(migrated);
+      return migrated;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (!isOpen) return null;
 
@@ -229,7 +258,8 @@ export const ManholeDbModal: React.FC<Props> = ({
       remarks: remarks.trim() || undefined,
       x: coordX.trim() || undefined,
       y: coordY.trim() || undefined,
-      distToNext: distNext.trim() || undefined
+      distToNext: distNext.trim() || undefined,
+      system: importSystem
     };
 
     const updated = [newItem, ...items.filter(i => i.name.toUpperCase() !== newItem.name)];
@@ -252,7 +282,7 @@ export const ManholeDbModal: React.FC<Props> = ({
 
   const handleBatchImport = () => {
     if (!batchText.trim()) return;
-    const newItems = parseManholeBlock(batchText);
+    const newItems = parseManholeBlock(batchText, importSystem);
 
     if (newItems.length === 0) {
       onToast('형식에 맞게 입력해주세요 (예: MH01 -0.430 195432.12 452110.45 75)');
@@ -298,7 +328,7 @@ export const ManholeDbModal: React.FC<Props> = ({
       const content = decodeCsvBuffer(buf);
       if (!content) return;
 
-      const newItems = parseManholeBlock(content);
+      const newItems = parseManholeBlock(content, importSystem);
 
       if (newItems.length === 0) {
         onToast('파일에서 유효한 맨홀 데이터를 찾지 못했습니다 (형식: MH01, -0.430, X, Y, 거리)');
@@ -356,8 +386,14 @@ export const ManholeDbModal: React.FC<Props> = ({
   };
 
   const filteredItems = items.filter(i =>
-    matchManholeByNameOrNumber(searchTerm, i.name, i.remarks)
+    matchManholeByNameOrNumber(searchTerm, i.name, i.remarks) &&
+    (systemFilter === '전체' || i.system === systemFilter)
   );
+  const systemCounts = items.reduce<Record<string, number>>((acc, i) => {
+    const k = i.system || '미지정';
+    acc[k] = (acc[k] || 0) + 1;
+    return acc;
+  }, {});
 
   return (
     <div
@@ -448,6 +484,18 @@ export const ManholeDbModal: React.FC<Props> = ({
                   {showBatchInput ? '개별 입력' : '📋 텍스트 붙여넣기'}
                 </button>
               </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+              <span style={{ fontSize: '11px', color: 'var(--ink-2)', fontWeight: 600 }}>가져올 시설</span>
+              <select
+                value={importSystem}
+                onChange={e => setImportSystem(e.target.value as ManholeSystem)}
+                style={{ height: '28px', fontSize: '11.5px', borderRadius: '6px', border: '1px solid var(--line)' }}
+                title="열에 '시설' 칸이 있으면 그 값이 우선 적용되고, 없으면 여기서 고른 시설로 전부 등록됩니다"
+              >
+                {MANHOLE_SYSTEMS.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
             </div>
 
             {showBatchInput ? (
@@ -547,6 +595,27 @@ export const ManholeDbModal: React.FC<Props> = ({
                 <Search size={12} style={{ position: 'absolute', left: '6px', top: '8px', color: 'var(--ink-3)' }} />
               </div>
             </div>
+            <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', marginBottom: '8px' }}>
+              {(['전체', ...MANHOLE_SYSTEMS] as const).map(s => {
+                const n = s === '전체' ? items.length : (systemCounts[s] || 0);
+                const active = systemFilter === s;
+                return (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setSystemFilter(s)}
+                    style={{
+                      fontSize: '10.5px', fontWeight: 700, padding: '3px 9px', borderRadius: '999px',
+                      border: `1px solid ${active ? 'var(--primary)' : 'var(--line)'}`,
+                      background: active ? 'var(--primary-bg)' : 'var(--surface-2)',
+                      color: active ? 'var(--primary)' : 'var(--ink-2)', cursor: 'pointer'
+                    }}
+                  >
+                    {s} {n}
+                  </button>
+                );
+              })}
+            </div>
 
             {filteredItems.length === 0 ? (
               <div style={{ padding: '24px 10px', textAlign: 'center', color: 'var(--ink-3)', fontSize: '12.5px' }}>
@@ -627,6 +696,16 @@ export const ManholeDbModal: React.FC<Props> = ({
                           title={`분기정보 형식이 안 맞아 건너뛴 항목 — 관저고 값을 확인하세요: ${item.branchIssues.join(', ')}`}
                         >
                           ⚠️ 분기정보 오류 {item.branchIssues.length}
+                        </span>
+                      )}
+                      {item.system && (
+                        <span
+                          style={{
+                            fontSize: '10.5px', fontWeight: 700, padding: '2px 6px', borderRadius: '999px',
+                            border: '1px solid var(--line)', background: 'var(--surface-2)', color: 'var(--ink-2)'
+                          }}
+                        >
+                          {item.system}
                         </span>
                       )}
                       {item.remarks && (

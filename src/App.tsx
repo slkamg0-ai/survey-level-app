@@ -8,6 +8,7 @@ import { ManholeDbModal, getSavedManholes } from './components/ManholeDbModal';
 import { RouteModal } from './components/RouteModal';
 import { NearbyModal } from './components/NearbyModal';
 import { SiteMapModal } from './components/SiteMapModal';
+import { ThreeDViewModal } from './components/ThreeDViewModal';
 import { loadRoutes, buildSpans, applyManholePick, describeLengthGap, reconcileRouteContext } from './utils/routes';
 import { TrenchSurveyData, StandardSurveyData, ManholeMasterItem } from './types/survey';
 import './styles/index.css';
@@ -36,6 +37,7 @@ export function App() {
   const [isRouteModalOpen, setIsRouteModalOpen] = useState(false);
   const [isNearbyModalOpen, setIsNearbyModalOpen] = useState(false);
   const [isSiteMapOpen, setIsSiteMapOpen] = useState(false);
+  const [isThreeDOpen, setIsThreeDOpen] = useState(false);
 
   // 로드 콜백 트리거
   const [loadedTrenchData, setLoadedTrenchData] = useState<TrenchSurveyData | null>(null);
@@ -122,6 +124,7 @@ export function App() {
         onOpenRoutes={() => setIsRouteModalOpen(true)}
         onOpenNearby={() => setIsNearbyModalOpen(true)}
         onOpenMap={() => setIsSiteMapOpen(true)}
+        onOpen3D={() => setIsThreeDOpen(true)}
       />
 
       {activeTab === 'trench' ? (
@@ -227,6 +230,14 @@ export function App() {
         }}
         initialStartMhName={readJson('survey_trench_data_v2').startMhName}
         initialEndMhName={readJson('survey_trench_data_v2').endMhName}
+      />
+
+      {/* 3D 뷰어 모달 — 맨홀DB·노선을 실제 치수로 */}
+      <ThreeDViewModal
+        isOpen={isThreeDOpen}
+        onClose={() => setIsThreeDOpen(false)}
+        manholes={getSavedManholes()}
+        routes={loadRoutes()}
       />
 
       {/* Floating Toast Notification */}
