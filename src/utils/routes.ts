@@ -1,4 +1,4 @@
-import { ManholeMasterItem, SurveyRoute, RouteSpan, manholeInvertIn, manholeInvertOut } from '../types/survey';
+import { ManholeMasterItem, ManholeSystem, SurveyRoute, RouteSpan, manholeInvertIn, manholeInvertOut } from '../types/survey';
 import { parseNum } from './storage';
 
 /**
@@ -83,14 +83,27 @@ export function buildSpans(route: SurveyRoute | null, manholes: ManholeMasterIte
   return spans;
 }
 
-/** 이름으로 맨홀 찾기 (대소문자·앞뒤공백 무시) */
+/**
+ * 이름으로 맨홀 찾기 (대소문자·앞뒤공백 무시).
+ *
+ * CAD 쪽 명명 규칙이 시설마다 독립적이라 같은 이름이 다른 시설에도 실제로 존재할 수 있다
+ * (예: 우수 M1-128과 오수 M1-128은 서로 다른 맨홀). preferSystem을 주면 그 시설과 일치하는
+ * 쪽을 우선 반환하고, 없으면 기존처럼 먼저 찾은 것을 반환한다.
+ */
 export function findManholeByName(
   list: ManholeMasterItem[],
-  name?: string
+  name?: string,
+  preferSystem?: ManholeSystem
 ): ManholeMasterItem | null {
   if (!name || !name.trim()) return null;
   const n = name.trim().toUpperCase();
-  return list.find(m => (m.name || '').trim().toUpperCase() === n) || null;
+  const matches = list.filter(m => (m.name || '').trim().toUpperCase() === n);
+  if (matches.length === 0) return null;
+  if (preferSystem) {
+    const scoped = matches.find(m => m.system === preferSystem);
+    if (scoped) return scoped;
+  }
+  return matches[0];
 }
 
 /** 두 맨홀의 좌표 거리. 한쪽이라도 좌표가 없으면 null */
@@ -151,7 +164,8 @@ export interface RouteImportResult {
  */
 export function parseRouteImport(
   text: string,
-  manholes: ManholeMasterItem[]
+  manholes: ManholeMasterItem[],
+  importSystem?: ManholeSystem
 ): RouteImportResult | null {
   let parsed: any;
   try {
@@ -175,7 +189,7 @@ export function parseRouteImport(
     const ids: string[] = [];
     const keptOrigIdx: number[] = []; // 살아남은 맨홀의 원래(가져오기 파일 기준) 순번
     names.forEach((n, origIdx) => {
-      const item = findManholeByName(manholes, n);
+      const item = findManholeByName(manholes, n, importSystem);
       if (item) { ids.push(item.id); keptOrigIdx.push(origIdx); }
       else missing.add(n.trim().toUpperCase());
     });
@@ -257,4 +271,115 @@ export function describeLengthGap(
 export function lengthDiscrepancy(span: RouteSpan): number | null {
   if (span.coordLength === null || span.sheetLength === null) return null;
   return span.coordLength - span.sheetLength;
+}
+
+/**
+ * 두 선분 사이 평면상 최단거리(m) — 끝점을 [0,1]로 자른 투영을 쓰는 표준 알고리즘.
+ * 두 선분이 교차하면 0에 가깝다.
+ */
+function segmentDistance(
+  a1x: number, a1y: number, a2x: number, a2y: number,
+  b1x: number, b1y: number, b2x: number, b2y: number
+): number {
+  const d1x = a2x - a1x, d1y = a2y - a1y;
+  const d2x = b2x - b1x, d2y = b2y - b1y;
+  const rx = a1x - b1x, ry = a1y - b1y;
+  const a = d1x * d1x + d1y * d1y;
+  const e = d2x * d2x + d2y * d2y;
+  const f = d2x * rx + d2y * ry;
+  const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+  const EPS = 1e-9;
+  let s: number, t: number;
+  if (a <= EPS && e <= EPS) {
+    s = 0; t = 0;
+  } else if (a <= EPS) {
+    s = 0; t = clamp01(f / e);
+  } else {
+    const c = d1x * rx + d1y * ry;
+    if (e <= EPS) {
+      t = 0; s = clamp01(-c / a);
+    } else {
+      const b = d1x * d2x + d1y * d2y;
+      const denom = a * e - b * b;
+      s = denom !== 0 ? clamp01((b * f - c * e) / denom) : 0;
+      t = (b * s + f) / e;
+      if (t < 0) { t = 0; s = clamp01(-c / a); }
+      else if (t > 1) { t = 1; s = clamp01((b - c) / a); }
+    }
+  }
+  const px = a1x + d1x * s, py = a1y + d1y * s;
+  const qx = b1x + d2x * t, qy = b1y + d2y * t;
+  return Math.hypot(px - qx, py - qy);
+}
+
+export interface RelatedRoute {
+  route: SurveyRoute;
+  distanceM: number;
+}
+
+/**
+ * 고른 노선(들) 주변에 겹치거나 가까이 지나는 다른 노선을 찾는다.
+ *
+ * 다른 공종(우수/오수 등) 관로가 같은 구간에 겹쳐 묻히거나 너무 가까이 지나면 시공 중
+ * 간섭이 생긴다 — 특정 노선을 볼 때 그 주변 다른 공종 노선을 같이 띄워서 바로 검토할 수
+ * 있어야 한다는 요구로 추가. 평면(X/Y) 최단거리 기준이며, 좌표 없는 구간은 건너뛴다.
+ */
+export function findRelatedRoutes(
+  selectedRoutes: SurveyRoute[],
+  allRoutes: SurveyRoute[],
+  manholes: ManholeMasterItem[],
+  thresholdM: number
+): RelatedRoute[] {
+  const selectedIds = new Set(selectedRoutes.map(r => r.id));
+  const selSegs: { x1: number; y1: number; x2: number; y2: number }[] = [];
+  for (const r of selectedRoutes) {
+    for (const sp of buildSpans(r, manholes)) {
+      const x1 = parseNum(sp.start.x), y1 = parseNum(sp.start.y);
+      const x2 = parseNum(sp.end.x), y2 = parseNum(sp.end.y);
+      if (x1 === null || y1 === null || x2 === null || y2 === null) continue;
+      selSegs.push({ x1, y1, x2, y2 });
+    }
+  }
+  if (!selSegs.length) return [];
+
+  const out: RelatedRoute[] = [];
+  for (const r of allRoutes) {
+    if (selectedIds.has(r.id)) continue;
+    let minD = Infinity;
+    outer: for (const sp of buildSpans(r, manholes)) {
+      const x1 = parseNum(sp.start.x), y1 = parseNum(sp.start.y);
+      const x2 = parseNum(sp.end.x), y2 = parseNum(sp.end.y);
+      if (x1 === null || y1 === null || x2 === null || y2 === null) continue;
+      for (const s of selSegs) {
+        const d = segmentDistance(x1, y1, x2, y2, s.x1, s.y1, s.x2, s.y2);
+        if (d < minD) minD = d;
+        if (minD <= 0.01) break outer;
+      }
+    }
+    if (minD <= thresholdM) out.push({ route: r, distanceM: minD });
+  }
+  out.sort((a, b) => a.distanceM - b.distanceM);
+  return out;
+}
+
+/**
+ * 노선이 속한 시설 추정.
+ *
+ * SurveyRoute 자체엔 system 필드가 없다 — 노선을 이루는 맨홀들의 system을 다수결로 봐서
+ * 추정한다. 끝맨홀 하나만 보면 그 맨홀에 system이 없을 때 전체가 "미지정"이 되므로,
+ * 구성 맨홀 전체를 센다.
+ */
+export function routeSystem(route: SurveyRoute, manholes: ManholeMasterItem[]): ManholeSystem | undefined {
+  const byId = new Map(manholes.map(m => [m.id, m]));
+  const counts = new Map<ManholeSystem, number>();
+  for (const id of route.manholeIds) {
+    const sys = byId.get(id)?.system;
+    if (sys) counts.set(sys, (counts.get(sys) || 0) + 1);
+  }
+  let best: ManholeSystem | undefined;
+  let bestCount = 0;
+  for (const [sys, count] of counts) {
+    if (count > bestCount) { best = sys; bestCount = count; }
+  }
+  return best;
 }

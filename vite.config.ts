@@ -9,6 +9,19 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'favicon.svg', 'apple-touch-icon.png', 'masked-icon.svg'],
+      workbox: {
+        // 3D 뷰어(three.js)는 code-split 돼 있는데, 서비스워커 사전캐싱이 다 쓸어가면
+        // 3D를 한 번도 안 열어도 설치 직후 백그라운드로 받아가 버려 분리한 의미가 없다 —
+        // 이 청크만 사전캐싱에서 빼고, 실제로 열 때 받아서 그 뒤로는 캐시로 쓴다.
+        globIgnores: ['**/ThreeDViewModal-*.js'],
+        runtimeCaching: [
+          {
+            urlPattern: /ThreeDViewModal-.*\.js$/,
+            handler: 'CacheFirst',
+            options: { cacheName: '3d-viewer-chunk' }
+          }
+        ]
+      },
       manifest: {
         name: '현장 측량 레벨 야장',
         short_name: '측량야장',

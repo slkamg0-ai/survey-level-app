@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ManholeMasterItem, ManholeSystem, MANHOLE_SYSTEMS, matchManholeByNameOrNumber, manholeInvertIn, manholeInvertOut, manholeDropM, decodeBranches, manholeIsJunction, branchParseIssues } from '../types/survey';
+import { ManholeMasterItem, ManholeSystem, MANHOLE_SYSTEMS, MANHOLE_SYSTEM_COLOR, matchManholeByNameOrNumber, manholeInvertIn, manholeInvertOut, manholeDropM, decodeBranches, manholeIsJunction, branchParseIssues } from '../types/survey';
 import { Database, Plus, Trash2, X, FileText, Upload, Search } from 'lucide-react';
 
 interface Props {
@@ -206,6 +206,30 @@ export function saveManholeList(list: ManholeMasterItem[]) {
   }
 }
 
+/**
+ * 새로 들어온 맨홀을 기존 목록과 합친다.
+ *
+ * CAD 명명 규칙이 시설마다 독립적이라 같은 이름이 다른 시설에도 실제로 존재한다
+ * (예: 우수 M1-128과 오수 M1-128). 이름만으로 중복 판정하면 나중에 들어온 시설이
+ * 먼저 있던 다른 시설의 맨홀을 조용히 지워버린다 — 이름+시설을 함께 키로 써서
+ * 같은 시설·같은 이름만 덮어쓰고, 시설이 다르면 둘 다 남긴다.
+ */
+export function mergeManholes(
+  newItems: ManholeMasterItem[],
+  existing: ManholeMasterItem[]
+): { merged: ManholeMasterItem[]; crossSystemKept: number } {
+  const key = (i: ManholeMasterItem) => `${i.name.toUpperCase()}::${i.system || ''}`;
+  const newKeys = new Set(newItems.map(key));
+  const newNames = new Set(newItems.map(i => i.name.toUpperCase()));
+  let crossSystemKept = 0;
+  const kept = existing.filter(i => {
+    if (newKeys.has(key(i))) return false; // 같은 이름·같은 시설 → 새 값으로 교체
+    if (newNames.has(i.name.toUpperCase())) crossSystemKept++; // 같은 이름·다른 시설 → 둘 다 유지
+    return true;
+  });
+  return { merged: [...newItems, ...kept], crossSystemKept };
+}
+
 export const ManholeDbModal: React.FC<Props> = ({
   isOpen,
   onClose,
@@ -262,7 +286,7 @@ export const ManholeDbModal: React.FC<Props> = ({
       system: importSystem
     };
 
-    const updated = [newItem, ...items.filter(i => i.name.toUpperCase() !== newItem.name)];
+    const { merged: updated } = mergeManholes([newItem], items);
     setItems(updated);
     saveManholeList(updated);
     setMhName('');
@@ -289,15 +313,17 @@ export const ManholeDbModal: React.FC<Props> = ({
       return;
     }
 
-    // 이름 중복 제거 후 합치기
-    const existingNames = new Set(newItems.map(i => i.name));
-    const merged = [...newItems, ...items.filter(i => !existingNames.has(i.name))];
+    // 같은 시설·같은 이름만 덮어쓰고, 다른 시설의 같은 이름은 둘 다 남긴다
+    const { merged, crossSystemKept } = mergeManholes(newItems, items);
 
     setItems(merged);
     saveManholeList(merged);
     setBatchText('');
     setShowBatchInput(false);
-    onToast(`🎉 ${newItems.length}개 CAD 맨홀 관저고 일괄 등록 완료!`);
+    onToast(
+      `🎉 ${newItems.length}개 CAD 맨홀 관저고 일괄 등록 완료!` +
+      (crossSystemKept > 0 ? ` · 다른 시설과 이름 겹침 ${crossSystemKept}건은 둘 다 유지` : '')
+    );
   };
 
   /**
@@ -335,12 +361,14 @@ export const ManholeDbModal: React.FC<Props> = ({
         return;
       }
 
-      const existingNames = new Set(newItems.map(i => i.name));
-      const merged = [...newItems, ...items.filter(i => !existingNames.has(i.name))];
+      const { merged, crossSystemKept } = mergeManholes(newItems, items);
 
       setItems(merged);
       saveManholeList(merged);
-      onToast(`📁 '${file.name}' 파일에서 ${newItems.length}개 맨홀 DB 등록 완료!`);
+      onToast(
+        `📁 '${file.name}' 파일에서 ${newItems.length}개 맨홀 DB 등록 완료!` +
+        (crossSystemKept > 0 ? ` · 다른 시설과 이름 겹침 ${crossSystemKept}건은 둘 다 유지` : '')
+      );
     };
     reader.readAsArrayBuffer(file);
   };
@@ -491,7 +519,10 @@ export const ManholeDbModal: React.FC<Props> = ({
               <select
                 value={importSystem}
                 onChange={e => setImportSystem(e.target.value as ManholeSystem)}
-                style={{ height: '28px', fontSize: '11.5px', borderRadius: '6px', border: '1px solid var(--line)' }}
+                style={{
+                  height: '28px', fontSize: '11.5px', borderRadius: '6px',
+                  border: `1.5px solid ${MANHOLE_SYSTEM_COLOR[importSystem]}`, color: MANHOLE_SYSTEM_COLOR[importSystem], fontWeight: 700
+                }}
                 title="열에 '시설' 칸이 있으면 그 값이 우선 적용되고, 없으면 여기서 고른 시설로 전부 등록됩니다"
               >
                 {MANHOLE_SYSTEMS.map(s => <option key={s} value={s}>{s}</option>)}
@@ -595,22 +626,30 @@ export const ManholeDbModal: React.FC<Props> = ({
                 <Search size={12} style={{ position: 'absolute', left: '6px', top: '8px', color: 'var(--ink-3)' }} />
               </div>
             </div>
-            <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', marginBottom: '8px' }}>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '8px' }}>
               {(['전체', ...MANHOLE_SYSTEMS] as const).map(s => {
                 const n = s === '전체' ? items.length : (systemCounts[s] || 0);
                 const active = systemFilter === s;
+                const color = s === '전체' ? undefined : MANHOLE_SYSTEM_COLOR[s];
+                const empty = s !== '전체' && n === 0;
                 return (
                   <button
                     key={s}
                     type="button"
                     onClick={() => setSystemFilter(s)}
+                    disabled={empty}
+                    title={empty ? `${s} 시설로 등록된 맨홀 없음` : `${s}만 보기`}
                     style={{
-                      fontSize: '10.5px', fontWeight: 700, padding: '3px 9px', borderRadius: '999px',
-                      border: `1px solid ${active ? 'var(--primary)' : 'var(--line)'}`,
-                      background: active ? 'var(--primary-bg)' : 'var(--surface-2)',
-                      color: active ? 'var(--primary)' : 'var(--ink-2)', cursor: 'pointer'
+                      display: 'flex', alignItems: 'center', gap: '5px',
+                      fontSize: '11px', fontWeight: 700, padding: '4px 10px', borderRadius: '999px',
+                      border: `1.5px solid ${active ? (color || 'var(--primary)') : 'var(--line)'}`,
+                      background: active ? (color ? `${color}26` : 'var(--primary-bg)') : 'var(--surface-2)',
+                      color: active ? (color || 'var(--primary)') : 'var(--ink-2)',
+                      opacity: empty ? 0.45 : 1,
+                      cursor: empty ? 'default' : 'pointer'
                     }}
                   >
+                    {color && <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: color, flexShrink: 0 }} />}
                     {s} {n}
                   </button>
                 );
@@ -619,7 +658,13 @@ export const ManholeDbModal: React.FC<Props> = ({
 
             {filteredItems.length === 0 ? (
               <div style={{ padding: '24px 10px', textAlign: 'center', color: 'var(--ink-3)', fontSize: '12.5px' }}>
-                검색된 맨홀 데이터가 없습니다. (숫자로 검색: 예: 1, 01)
+                {items.length === 0
+                  ? '등록된 맨홀이 없습니다. 위에서 추가해주세요.'
+                  : systemFilter !== '전체' && searchTerm
+                  ? `'${systemFilter}' 안에서 '${searchTerm}' 검색 결과가 없습니다.`
+                  : systemFilter !== '전체'
+                  ? `'${systemFilter}'로 등록된 맨홀이 없습니다.`
+                  : '검색된 맨홀 데이터가 없습니다. (숫자로 검색: 예: 1, 01)'}
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '350px', overflowY: 'auto' }}>
@@ -701,8 +746,10 @@ export const ManholeDbModal: React.FC<Props> = ({
                       {item.system && (
                         <span
                           style={{
-                            fontSize: '10.5px', fontWeight: 700, padding: '2px 6px', borderRadius: '999px',
-                            border: '1px solid var(--line)', background: 'var(--surface-2)', color: 'var(--ink-2)'
+                            fontSize: '10.5px', fontWeight: 700, padding: '2px 7px', borderRadius: '999px',
+                            border: `1px solid ${MANHOLE_SYSTEM_COLOR[item.system]}`,
+                            background: `${MANHOLE_SYSTEM_COLOR[item.system]}22`,
+                            color: MANHOLE_SYSTEM_COLOR[item.system]
                           }}
                         >
                           {item.system}
