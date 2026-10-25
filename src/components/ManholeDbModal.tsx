@@ -106,6 +106,16 @@ export function detectColumns(cells: string[]): ColumnMap | null {
   return hits >= 2 && map.name >= 0 && map.invertEl >= 0 ? map : null;
 }
 
+/**
+ * 이름+시설로 정해지는 맨홀 id — CSV를 다시 올려도(같은 맨홀 재가져오기) 항상 같은 id가
+ * 나와야 한다. id가 매번 랜덤(Date.now())이면, 맨홀을 재가져오기할 때마다 새 id가 생겨
+ * 그 전에 가져온 노선(routes)이 들고 있던 맨홀 참조가 조용히 끊긴다 — 노선의 시설 추정도
+ * 안 되고 3D에서 관(파이프)도 안 그려지는 원인이 바로 이것이었다.
+ */
+export function manholeId(name: string, system?: ManholeSystem): string {
+  return `mh::${name.toUpperCase()}::${system || ''}`;
+}
+
 export function parseManholeLine(
   parts: string[], idx: number, cols: ColumnMap | null, defaultSystem?: ManholeSystem
 ): ManholeMasterItem | null {
@@ -118,8 +128,9 @@ export function parseManholeLine(
     const el = at(cols.invertEl);
     if (!name || !isFinite(parseFloat(el))) return null;
     const elIn = at(cols.invertElIn);
+    const system = asSystem(at(cols.system)) ?? defaultSystem;
     return {
-      id: `${Date.now()}_${idx}`,
+      id: manholeId(name, system),
       name,
       invertEl: el,
       // 유입관저고는 값이 있고 실제 숫자일 때만 낙차맨홀로 인정한다 —
@@ -136,7 +147,7 @@ export function parseManholeLine(
         return issues.length ? issues : undefined;
       })(),
       // 열에 시설 칸이 있으면 그 값을, 없으면(또는 못 알아보는 값이면) 가져오기 때 고른 기본 시설을 쓴다.
-      system: asSystem(at(cols.system)) ?? defaultSystem,
+      system,
       gl: at(cols.gl) || undefined,
       typeLabel: at(cols.typeLabel) || undefined
     };
@@ -164,7 +175,7 @@ export function parseManholeLine(
   }
 
   return {
-    id: `${Date.now()}_${idx}`,
+    id: manholeId(name, defaultSystem),
     name,
     invertEl: el,
     x, y,
@@ -274,9 +285,10 @@ export const ManholeDbModal: React.FC<Props> = ({
       return;
     }
 
+    const newName = mhName.trim().toUpperCase();
     const newItem: ManholeMasterItem = {
-      id: Date.now().toString(),
-      name: mhName.trim().toUpperCase(),
+      id: manholeId(newName, importSystem),
+      name: newName,
       invertEl: invertEl.trim(),
       invertElIn: invertElIn.trim() || undefined,
       remarks: remarks.trim() || undefined,
